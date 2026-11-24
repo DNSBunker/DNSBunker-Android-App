@@ -14,8 +14,8 @@ android {
         applicationId = "org.dnsbunker.android"
         minSdk = 29
         targetSdk = 36
-        versionCode = 200
-        versionName = "0.2.0"
+        versionCode = 201
+        versionName = "0.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -52,7 +52,10 @@ android {
     testOptions { unitTests.isIncludeAndroidResources = true }
     sourceSets.getByName("main").assets.srcDir(rootProject.file("licenses"))
     buildFeatures { compose = true; buildConfig = true }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    packaging {
+        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        jniLibs { keepDebugSymbols += "**/*.so" }
+    }
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false

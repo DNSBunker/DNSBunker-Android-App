@@ -1,0 +1,2 @@
+- Reproduzierbarer Build: Native Bibliotheken werden nicht mehr von den Android-Build-Werkzeugen nachbearbeitet, dadurch ist jeder Build aus demselben Quelltext identisch (Voraussetzung für F-Droid)
+- Keine Funktionsänderungen gegenüber 0.2.0

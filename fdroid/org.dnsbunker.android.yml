@@ -1,3 +1,6 @@
+AntiFeatures:
+  TetheredNet:
+    en-US: Works only with the DNSBunker resolver at dnsbunker.org.
 Categories:
   - Connectivity
   - DNS & Hosts
@@ -13,12 +16,13 @@ AutoName: DNSBunker
 
 RepoType: git
 Repo: https://github.com/DNSBunker/DNSBunker-Android-App.git
-Binaries: https://github.com/DNSBunker/DNSBunker-Android-App/releases/download/v%v/DNSBunker-%v.apk
+Binaries: 
+  https://github.com/DNSBunker/DNSBunker-Android-App/releases/download/v%v/DNSBunker-%v.apk
 
 Builds:
-  - versionName: 0.2.0
-    versionCode: 200
-    commit: v0.2.0
+  - versionName: 0.2.1
+    versionCode: 201
+    commit: v0.2.1
     subdir: app
     sudo:
       - apt-get update
@@ -36,5 +40,5 @@ AllowedAPKSigningKeys: f13a62cbbaded75adbdc7583075b6adfa851cf7badc6dc40aa46969b5
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 0.2.0
-CurrentVersionCode: 200
+CurrentVersion: 0.2.1
+CurrentVersionCode: 201
