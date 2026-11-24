@@ -26,8 +26,9 @@ Apps that bring their own encrypted DNS (for example some browsers) are not cove
 
 ## Download
 
-- Signed APKs: [GitHub releases](https://github.com/DNSBunker/DNSBunker-Android-App/releases)
-- F-Droid: submission in preparation
+- Latest APK: <https://github.com/DNSBunker/DNSBunker-Android-App/releases/latest/download/DNSBunker.apk>
+- All versions with checksums and signatures: [GitHub releases](https://github.com/DNSBunker/DNSBunker-Android-App/releases)
+- The app checks these releases once a day and offers verified updates (can be turned off in the settings)
 
 ### Verifying a release
 
