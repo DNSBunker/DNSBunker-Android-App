@@ -1,0 +1,6 @@
+Erste öffentliche Version.
+- Neue Oberfläche: Schutz, Statistik und sortierte Einstellungen
+- Schnellere Erholung nach Netzausfällen, begrenzte DNS-Wartezeit
+- Umfassender Modus: nicht erreichbare Ziele werden sauber abgewiesen, lange Verbindungen nicht mehr nach 2 Minuten getrennt, weniger CPU-Last
+- WLAN-Regeln funktionieren jetzt auch unter Android 10 und 11
+- Reproduzierbarer Build, nativer Code wird aus dem Quelltext gebaut

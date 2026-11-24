@@ -1,0 +1,34 @@
+<p>DNSBunker sendet die DNS-Anfragen deines Geräts verschlüsselt an den DNSBunker-Resolver unter dnsbunker.org, der Werbung, Tracker und bekannte Bedrohungen filtert, bevor überhaupt eine Verbindung entsteht.</p>
+
+<p><b>So funktioniert es</b></p>
+<ul>
+<li>Ein lokales VPN auf deinem Gerät nimmt die System-DNS-Anfragen von Android entgegen. Es gibt keinen entfernten VPN-Server: Der übrige Datenverkehr geht weiterhin direkt an sein Ziel.</li>
+<li>Anfragen verlassen das Gerät nur verschlüsselt: DNS over HTTPS (HTTP/2 und HTTP/3), DNS over QUIC und als Rückfall DNS over TLS. Zertifikate werden immer geprüft.</li>
+<li>Ist keine verschlüsselte Verbindung möglich, schlagen Anfragen sicher fehl. Es gibt nie einen stillen Rückfall auf unverschlüsseltes DNS.</li>
+<li>Der optionale umfassende Modus leitet auch Apps um, die DNS direkt an öffentliche Server auf Port 53 schicken.</li>
+</ul>
+
+<p><b>Für den Alltag gemacht</b></p>
+<ul>
+<li>Ein Schalter zum Einschalten, klarer Status und Live-Statistik: beantwortete und blockierte Anfragen, Filterkategorien (PRO und TIF) und Antwortzeiten.</li>
+<li>WLAN-Ausnahmen für Netze, in denen du das lokale DNS nutzen möchtest.</li>
+<li>Lokale Namen wie nas.home.arpa gehen nie an den öffentlichen Resolver; Router-DNS lässt sich für vertrauenswürdige WLANs erlauben.</li>
+<li>Automatische Wiederherstellung nach Netzwechseln, dunkles Design und fünf Sprachen (Deutsch, Englisch, Französisch, Spanisch, Russisch).</li>
+</ul>
+
+<p><b>Datenschutz</b></p>
+<ul>
+<li>Keine Werbung, keine Tracker, keine Telemetrie, kein Konto.</li>
+<li>Statistiken bleiben nur im Arbeitsspeicher deines Geräts. Es wird kein Domain-Verlauf gespeichert.</li>
+<li>Android-Backups sind für die App deaktiviert.</li>
+</ul>
+
+<p><b>Berechtigungen</b></p>
+<ul>
+<li>VPN: nötig, um System-DNS-Anfragen lokal zu empfangen.</li>
+<li>Standort: nur nötig, um den Namen des aktuellen WLANs für WLAN-Regeln zu lesen. Wird erst angefragt, wenn du eine solche Regel anlegst.</li>
+<li>Benachrichtigungen: zeigen den Schutzstatus, solange er aktiv ist.</li>
+<li>Akku-Optimierung: optionale Anfrage, damit Android den Schutz seltener beendet.</li>
+</ul>
+
+<p>Apps mit eigenem verschlüsseltem DNS (zum Beispiel manche Browser) werden von keinem System-DNS-Schutz erfasst. Datenschutzerklärung: https://dnsbunker.org/privacy.html</p>

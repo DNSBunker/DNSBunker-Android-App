@@ -1,0 +1,80 @@
+package org.dnsbunker.android.vpn
+
+import android.app.NotificationManager
+import android.content.Intent
+import android.os.ParcelFileDescriptor
+import kotlinx.coroutines.*
+import kotlinx.coroutines.test.*
+import org.dnsbunker.android.core.*
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.io.IOException
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [29])
+class VpnServiceLifecycleTest {
+    @Test fun `service creates foreground channel and destruction clears protection state`() {
+        val controller = Robolectric.buildService(DnsVpnService::class.java).create()
+        val service = controller.get()
+        try {
+            val manager = service.getSystemService(NotificationManager::class.java)
+            assertNotNull(manager.getNotificationChannel("dnsbunker_vpn"))
+            AppState.update { it.copy(status = ProtectionStatus.ACTIVE, transport = "DoH/2") }
+        } finally { controller.destroy() }
+        assertEquals(ProtectionStatus.OFF, AppState.snapshot.value.status)
+        assertEquals("—", AppState.snapshot.value.transport)
+    }
+    @Test fun `explicit stop releases the VPN before waiting for service destruction`() {
+        val controller = Robolectric.buildService(DnsVpnService::class.java).create()
+        val descriptors = ParcelFileDescriptor.createPipe()
+        val service = controller.get()
+        DnsVpnService::class.java.getDeclaredField("tunnel").apply { isAccessible = true }.set(service, descriptors[0])
+        try {
+            AppState.update { it.copy(status = ProtectionStatus.ACTIVE) }
+            service.onStartCommand(Intent().setAction(DnsVpnService.ACTION_STOP), 0, 1)
+            assertEquals(ProtectionStatus.OFF, AppState.snapshot.value.status)
+            assertNull(DnsVpnService::class.java.getDeclaredField("tunnel").apply { isAccessible = true }.get(service))
+        } finally { controller.destroy(); descriptors[1].close() }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun `TUN recovery retains the old descriptor throughout backoff`() = runTest {
+        val controller = Robolectric.buildService(DnsVpnService::class.java).create()
+        val descriptors = ParcelFileDescriptor.createPipe()
+        val service = controller.get()
+        DnsVpnService::class.java.getDeclaredField("tunnel").apply { isAccessible = true }.set(service, descriptors[0])
+        try {
+            val recovery = launch { service.recoverTunnel(descriptors[0]) }
+            runCurrent()
+            assertTrue("Recovery must keep DNS routes installed until replacement", descriptors[0].fileDescriptor.valid())
+            assertEquals(ProtectionStatus.DEGRADED, AppState.snapshot.value.status)
+            recovery.cancelAndJoin()
+        } finally { controller.destroy(); descriptors[1].close() }
+    }
+
+    @Test fun `no physical underlay cannot create an unbound default network socket`() {
+        val controller = Robolectric.buildService(DnsVpnService::class.java).create()
+        try {
+            try { ProtectedSockets(controller.get(), null).newSocket(); fail("must fail closed") }
+            catch (_: IOException) { }
+        } finally { controller.destroy() }
+    }
+
+    @Test fun `start after stop re-arms the service while refresh keeps it stopped`() {
+        val controller = Robolectric.buildService(DnsVpnService::class.java).create()
+        val service = controller.get()
+        val stopping = DnsVpnService::class.java.getDeclaredField("stopping").apply { isAccessible = true }
+        try {
+            service.onStartCommand(Intent().setAction(DnsVpnService.ACTION_STOP), 0, 1)
+            assertTrue(stopping.getBoolean(service))
+            service.onStartCommand(Intent().setAction(DnsVpnService.ACTION_REFRESH), 0, 2)
+            assertTrue("refresh must not restart a stopped VPN", stopping.getBoolean(service))
+            service.onStartCommand(Intent().setAction(DnsVpnService.ACTION_START), 0, 3)
+            assertFalse("explicit start must re-arm the service", stopping.getBoolean(service))
+        } finally { controller.destroy() }
+    }
+}

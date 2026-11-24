@@ -1,0 +1,34 @@
+<p>DNSBunker sends the DNS queries of your device encrypted to the DNSBunker resolver at dnsbunker.org, which filters ads, trackers and known threats before a connection is even made.</p>
+
+<p><b>How it works</b></p>
+<ul>
+<li>A local VPN on your device receives Android's system DNS queries. There is no remote VPN server: all other traffic keeps going directly to its destination.</li>
+<li>Queries leave the device only encrypted: DNS over HTTPS (HTTP/2 and HTTP/3), DNS over QUIC and, as a fallback, DNS over TLS. Certificates are always verified.</li>
+<li>If no encrypted connection is possible, queries fail safely. There is never a silent fallback to plaintext DNS.</li>
+<li>Optional comprehensive mode also redirects apps that send DNS directly to public servers on port 53.</li>
+</ul>
+
+<p><b>Made for everyday use</b></p>
+<ul>
+<li>One switch to turn protection on, with a clear status and live statistics: answered and blocked queries, filter categories (PRO and TIF) and response times.</li>
+<li>Wi-Fi exceptions for networks where you want to use the local DNS.</li>
+<li>Local names such as nas.home.arpa are never sent to the public resolver; router DNS can be allowed for trusted Wi-Fi networks.</li>
+<li>Automatic recovery after network changes, dark mode and five languages (English, German, French, Spanish, Russian).</li>
+</ul>
+
+<p><b>Privacy</b></p>
+<ul>
+<li>No ads, no trackers, no telemetry, no account.</li>
+<li>Statistics stay in memory on your device only. No domain history is stored.</li>
+<li>Android backups are disabled for the app.</li>
+</ul>
+
+<p><b>Permissions</b></p>
+<ul>
+<li>VPN: required to receive system DNS queries locally.</li>
+<li>Location: only needed to read the name of the current Wi-Fi for Wi-Fi rules. It is requested only when you add such a rule.</li>
+<li>Notifications: shows the protection status while it is active.</li>
+<li>Battery optimization: optional request so Android stops the protection less often.</li>
+</ul>
+
+<p>Apps that use their own encrypted DNS (for example some browsers) are not affected by any system DNS protection. Privacy policy: https://dnsbunker.org/privacy.html</p>

@@ -1,0 +1,6 @@
+First public release.
+- New interface: protection, statistics and sorted settings
+- Faster recovery after network outages, bounded DNS wait time
+- Comprehensive mode: unreachable destinations are refused cleanly, long-lived connections are no longer cut after 2 minutes, lower CPU use
+- Wi-Fi rules now work on Android 10 and 11
+- Reproducible build with native code compiled from source
