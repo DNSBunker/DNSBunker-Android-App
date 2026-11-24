@@ -17,7 +17,7 @@ object NativeFullTunnel {
  @JvmStatic external fun nativeStop(token:Long)
  @JvmStatic fun protectSocket(token:Long,fd:Int):Boolean {
   val c=sessions[token]?:return false;val network=c.network?:return false
-  return try{ParcelFileDescriptor.fromFd(fd).use {p->if(!c.service.protect(p.fd))false else{network.bindSocket(p.fileDescriptor);true}}}catch(_:Exception){false}
+  return try{ParcelFileDescriptor.fromFd(fd).use {p->if(!c.service.protect(p.fd))false else{Compat.bind(network,p.fileDescriptor);true}}}catch(_:Exception){false}
  }
  @JvmStatic fun emitPacket(token:Long,packet:ByteArray):Boolean {
   val c=sessions[token]?:return false

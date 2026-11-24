@@ -143,4 +143,24 @@
     <string name="current_wifi">Current Wi-Fi: %1$s</string>
     <string name="wifi_needs_location">Wi-Fi exceptions need the location permission and location turned on. Otherwise Android hides the network name.</string>
     <string name="wifi_lockdown_paused">Exceptions are paused while Android’s “Block connections without VPN” is on.</string>
+    <string name="always_on_title">Always-on VPN</string>
+    <string name="always_on_body">Protection restarts automatically after updates and restarts. For even more reliability, select DNSBunker as always-on VPN in Android.</string>
+    <string name="warning_channel">Warnings</string>
+    <string name="revoked_title">DNS protection was turned off</string>
+    <string name="revoked_body">Another VPN or Android ended DNSBunker. Tap to turn protection back on.</string>
+    <string name="bg_location_hint">Exceptions apply right after a restart only if Android allows location access “all the time”. Otherwise they start working once you open the app.</string>
+    <string name="bg_location_action">Allow location all the time</string>
+    <string name="update_auto_title">Automatic updates</string>
+    <string name="update_auto_body">Checks GitHub once a day for a new version. GitHub sees your IP address for this.</string>
+    <string name="update_check_now">Check for updates</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_latest">You have the latest version.</string>
+    <string name="update_available">Version %1$s is available</string>
+    <string name="update_install">Update now</string>
+    <string name="update_downloading">Downloading and verifying the update…</string>
+    <string name="update_installing">Installing…</string>
+    <string name="update_failed">The update failed. Try again later or download it from the website.</string>
+    <string name="update_permission">Allow DNSBunker to install apps, then tap “Update now” again.</string>
+    <string name="update_channel">Updates</string>
+    <string name="update_notification">DNSBunker %1$s is available. Tap to update.</string>
 </resources>

@@ -20,6 +20,14 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import androidx.core.app.ServiceCompat
+import androidx.core.location.LocationManagerCompat
+import org.dnsbunker.android.core.Compat
+import org.dnsbunker.android.core.UpdateState
+import org.dnsbunker.android.core.Updater
 import androidx.core.content.ContextCompat
 import org.dnsbunker.android.MainActivity
 import org.dnsbunker.android.core.AppState
@@ -62,6 +70,11 @@ class DnsVpnService : VpnService() {
         const val ACTION_REFRESH = "org.dnsbunker.android.REFRESH"
         private const val CHANNEL_ID = "dnsbunker_vpn"
         private const val NOTIFICATION_ID = 1001
+        private const val WARNING_CHANNEL_ID = "dnsbunker_warnings"
+        private const val WARNING_ID = 1002
+        private const val UPDATE_CHANNEL_ID = "dnsbunker_updates"
+        private const val UPDATE_ID = 1003
+        const val EXTRA_CHECK_UPDATE = "org.dnsbunker.android.CHECK_UPDATE"
         private const val DNS_V4 = "198.18.0.1"
         private const val TUN_V4 = "198.18.0.2"
         private const val DNS_V6 = "fd77:db4b::1"
@@ -100,7 +113,7 @@ class DnsVpnService : VpnService() {
         set(value){val old=resolverRef.getAndSet(value);if(old!==value)old?.close()}
     private fun invalidateResolver(network:Network) {
         val old=resolverRef.get()?:return
-        if(old.networkHandle==network.networkHandle && resolverRef.compareAndSet(old,null))scope.launch {old.close()}
+        if(old.networkHandle==Compat.id(network) && resolverRef.compareAndSet(old,null))scope.launch {old.close()}
     }
     @Volatile private var activeNetwork: Network? = null
 
@@ -136,9 +149,63 @@ class DnsVpnService : VpnService() {
     private var networkCallback: ConnectivityManager.NetworkCallback = newNetworkCallback()
     private val underlayRequest by lazy { NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build() }
 
+    private val lockdownEnabled: Boolean get() = Build.VERSION.SDK_INT >= 29 && isLockdownEnabled
+
+    private fun createChannel() {
+        if (Build.VERSION.SDK_INT < 26) return
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
+            .createNotificationChannel(NotificationChannel(CHANNEL_ID, getString(R.string.channel), NotificationManager.IMPORTANCE_LOW))
+    }
+
+    private fun warnRevoked() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            Build.VERSION.SDK_INT >= 33) return
+        if (Build.VERSION.SDK_INT >= 26) {
+            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(
+                NotificationChannel(WARNING_CHANNEL_ID, getString(R.string.warning_channel), NotificationManager.IMPORTANCE_HIGH))
+        }
+        val open = PendingIntent.getActivity(this, 1, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val warning = NotificationCompat.Builder(this, WARNING_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentTitle(getString(R.string.revoked_title))
+            .setContentText(getString(R.string.revoked_body))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(getString(R.string.revoked_body)))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ERROR)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        try { NotificationManagerCompat.from(this).notify(WARNING_ID, warning) } catch (_: SecurityException) { }
+    }
+
+    private suspend fun checkForUpdate() {
+        if (!settings.current().updateCheck || System.currentTimeMillis() - settings.lastUpdateCheck() < 24 * 3_600_000L) return
+        val release = try { Updater.check() } catch (c: CancellationException) { throw c } catch (_: Exception) { return }
+        settings.setLastUpdateCheck(System.currentTimeMillis())
+        if (release == null || settings.notifiedUpdate() == release.version) return
+        AppState.update { it.copy(updateState = UpdateState.AVAILABLE, updateVersion = release.version) }
+        settings.setNotifiedUpdate(release.version)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        if (Build.VERSION.SDK_INT >= 26) {
+            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(
+                NotificationChannel(UPDATE_CHANNEL_ID, getString(R.string.update_channel), NotificationManager.IMPORTANCE_DEFAULT))
+        }
+        val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java).putExtra(EXTRA_CHECK_UPDATE, true)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val text = getString(R.string.update_notification, release.version)
+        val note = NotificationCompat.Builder(this, UPDATE_CHANNEL_ID).setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("DNSBunker").setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(open).setAutoCancel(true).build()
+        try { NotificationManagerCompat.from(this).notify(UPDATE_ID, note) } catch (_: SecurityException) { }
+    }
+
+    private fun clearWarning() = NotificationManagerCompat.from(this).cancel(WARNING_ID)
+
     private fun hasLocationAccess(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
-            getSystemService(LocationManager::class.java)?.isLocationEnabled == true
+            LocationManagerCompat.isLocationEnabled(getSystemService(LOCATION_SERVICE) as LocationManager)
 
     private fun enterForeground(text: String, refresh: Boolean = true) {
         val notification = notification(text)
@@ -168,11 +235,10 @@ class DnsVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, getString(R.string.channel), NotificationManager.IMPORTANCE_LOW)
-        )
+        createChannel()
         enterForeground(getString(R.string.preparing), refresh = false)
+        scope.launch { AppState.snapshot.map { it.status }.distinctUntilChanged().collect { TileRefresher.refresh(this@DnsVpnService) } }
+        scope.launch { while (isActive) { delay(15 * 60_000L); checkForUpdate() } }
         try {
             networkManager.registerNetworkCallback(underlayRequest, networkCallback)
             networkManager.registerNetworkCallback(NetworkRequest.Builder().removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -188,15 +254,21 @@ class DnsVpnService : VpnService() {
             enterForeground(notificationText ?: getString(R.string.preparing))
             if (action == ACTION_REFRESH || action == ACTION_DIAGNOSTICS) {
                 if (stopping) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
                     stopSelf(startId)
                     return START_NOT_STICKY
                 }
-            } else stopping = false
+            } else {
+                stopping = false
+                settings.setProtectionWanted(true)
+                clearWarning()
+            }
         }
         when (action) {
             ACTION_STOP -> {
                 stopping = true
+                settings.setProtectionWanted(false)
+                clearWarning()
                 notificationText = null
                 networkEpoch.incrementAndGet()
                 networkChangedJob?.cancel()
@@ -205,7 +277,7 @@ class DnsVpnService : VpnService() {
                 resolver = null
                 closeTunnel()
                 AppState.update { it.copy(status = ProtectionStatus.OFF, transport = "—", currentWifi = null, detail = getString(R.string.off_detail)) }
-                stopForeground(STOP_FOREGROUND_REMOVE)
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -246,21 +318,21 @@ class DnsVpnService : VpnService() {
         val networks=networkManager.allNetworks.toList()
         val candidates=networks.mapNotNull { network ->
             val c=capabilities[network] ?: networkManager.getNetworkCapabilities(network) ?: return@mapNotNull null
-            UnderlayCandidate(network.networkHandle,c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
+            UnderlayCandidate(Compat.id(network),c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
                 c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
                 c.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL),
                 c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
                 c.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED),
                 c.hasTransport(NetworkCapabilities.TRANSPORT_VPN))
         }
-        val chosen=UnderlayPolicy.choose(candidates,activeNetwork?.networkHandle)
-        return networks.firstOrNull { it.networkHandle==chosen }
+        val chosen=UnderlayPolicy.choose(candidates,activeNetwork?.let(Compat::id))
+        return networks.firstOrNull { Compat.id(it)==chosen }
     }
     private val vpnCallback=object: ConnectivityManager.NetworkCallback() {
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
             if(android.os.Build.VERSION.SDK_INT>=30) {
                 if(caps.ownerUid!=android.os.Process.myUid())return
-            } else if(tunnel==null||networkManager.activeNetwork!=network||VpnService.prepare(this@DnsVpnService)!=null)return
+            } else if(tunnel==null||(Build.VERSION.SDK_INT>=23&&networkManager.activeNetwork!=network)||VpnService.prepare(this@DnsVpnService)!=null)return
             vpnNetwork=network
             AppState.update { it.copy(androidValidated=caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) }
         }
@@ -283,11 +355,11 @@ class DnsVpnService : VpnService() {
         val profile = settings.current()
         val currentSsid = ssid(underlay)
         val caps=underlay?.let { capabilities[it] ?: networkManager.getNetworkCapabilities(it) }
-        AppState.update { it.copy(underlayAvailable=underlay!=null,currentWifi=currentSsid,lockdown=isLockdownEnabled,
+        AppState.update { it.copy(underlayAvailable=underlay!=null,currentWifi=currentSsid,lockdown=lockdownEnabled,
             captivePortal=caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)==true,
             underlayValidated=caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)==true) }
         activeNetwork = underlay
-        val exempt = WifiPolicy.exempt(currentSsid, profile.exemptSsids, isLockdownEnabled)
+        val exempt = WifiPolicy.exempt(currentSsid, profile.exemptSsids, lockdownEnabled)
         if (exempt) {
             closeTunnel()
             resolver = null
@@ -295,7 +367,7 @@ class DnsVpnService : VpnService() {
             refreshNotification(getString(R.string.status_exempt))
             return@withLock
         }
-        val intercept=profile.interceptPublicDns || isLockdownEnabled
+        val intercept=profile.interceptPublicDns || lockdownEnabled
         if(intercept&&!NativeQuic.available) {
             AppState.update {it.copy(status=ProtectionStatus.ERROR,detail=getString(R.string.strict_unavailable))}
             return@withLock
@@ -312,11 +384,11 @@ class DnsVpnService : VpnService() {
                     .addAddress(TUN_V6, 128)
                     .addDnsServer(DNS_V6)
                     .addRoute(DNS_V6, 128)
-                    .setUnderlyingNetworks(underlay?.let { arrayOf(it) } ?: emptyArray())
-                    .setMetered(caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)!=true)
                     .setBlocking(true)
+                if (Build.VERSION.SDK_INT >= 22) builder.setUnderlyingNetworks(underlay?.let { arrayOf(it) } ?: emptyArray())
+                if (Build.VERSION.SDK_INT >= 29) builder.setMetered(caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)!=true)
                 if(intercept) {
-                    if(isLockdownEnabled) {builder.addRoute("0.0.0.0",0);builder.addRoute("::",0)}
+                    if(lockdownEnabled) {builder.addRoute("0.0.0.0",0);builder.addRoute("::",0)}
                     else RoutePlan.publicRoutes.forEach {builder.addRoute(it.address,it.prefix)}
                 }
                 val newTunnel=builder.establish() ?: throw IOException("VPN consent missing")
@@ -351,7 +423,7 @@ class DnsVpnService : VpnService() {
             AppState.update { it.copy(protocolHealth=emptyList()) }
             resolver?.startBackgroundProbes()
         }
-        setUnderlyingNetworks(underlay?.let { arrayOf(it) } ?: emptyArray())
+        if (Build.VERSION.SDK_INT >= 22) setUnderlyingNetworks(underlay?.let { arrayOf(it) } ?: emptyArray())
         if (underlay == null) {
             AppState.update { it.copy(status = ProtectionStatus.DEGRADED, detail = getString(R.string.offline_detail), transport = "—", padding = profile.ednsPaddingEnabled) }
             refreshNotification(getString(R.string.offline_notification))
@@ -469,7 +541,7 @@ class DnsVpnService : VpnService() {
         if (stopping) return
         if (healthy) {
             recoveryAttempt = 0
-            vpnNetwork?.let { networkManager.reportNetworkConnectivity(it,true) }
+            if (Build.VERSION.SDK_INT >= 23) vpnNetwork?.let { networkManager.reportNetworkConnectivity(it,true) }
         }
         AppState.update { it.copy(status = if (healthy) ProtectionStatus.ACTIVE else ProtectionStatus.DEGRADED,
             transport = if (healthy) resolver?.lastTransport ?: "—" else "—",
@@ -556,16 +628,18 @@ class DnsVpnService : VpnService() {
         AppState.update { it.copy(detail = detail) }
         refreshNotification(detail)
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, getString(R.string.channel), NotificationManager.IMPORTANCE_LOW))
+        createChannel()
     }
 
     override fun onRevoke() {
+        settings.setProtectionWanted(false)
         stopping=true
         networkEpoch.incrementAndGet()
         resolver=null
         healthJob?.cancel();watchdogJob?.cancel()
         closeTunnel()
         AppState.update {it.copy(status=ProtectionStatus.OFF,transport="—",currentWifi=null,androidValidated=false,detail=getString(R.string.off_detail))}
+        warnRevoked()
         super.onRevoke()
         stopSelf()
     }

@@ -1,6 +1,7 @@
 package org.dnsbunker.android.core
 
 import android.net.Network
+import android.os.Build
 import android.net.VpnService
 import org.dnsbunker.android.R
 import kotlinx.coroutines.*
@@ -31,7 +32,7 @@ class ProtectedSockets(private val service: VpnService, private val underlay: Ne
             val network = underlay ?: throw IOException("No physical network")
             socket.bind(InetSocketAddress(localAddress, localPort))
             if (!service.protect(socket)) throw IOException("VpnService.protect failed")
-            network.bindSocket(socket)
+            Compat.bind(network, socket)
         } catch (error: Exception) { socket.close(); throw error }
     }
     private fun connected(host: InetSocketAddress, local: InetAddress? = null, port: Int = 0): Socket {
@@ -51,6 +52,9 @@ class ProtectedSockets(private val service: VpnService, private val underlay: Ne
         override fun createSocket(host: InetAddress, port: Int, local: InetAddress, localPort: Int) = connected(InetSocketAddress(host, port), local, localPort)
     }
 }
+internal fun tlsVersions(): Array<TlsVersion> =
+    if (Build.VERSION.SDK_INT >= 29) arrayOf(TlsVersion.TLS_1_3) else arrayOf(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2)
+
 data class QueryTiming(val cold:Boolean, val setupMillis:Long, val elapsedMillis:Long)
 data class DnsExchange(val answer:ByteArray,val timing:QueryTiming)
 
@@ -67,7 +71,7 @@ class DnsOverHttps(sockets: ProtectedSockets, private val ipIdentity: Boolean = 
     override val name = "DoH/2 · " + if (ipIdentity) "IP" else "SNI"
     private val lifecycle=Any()
     @Volatile private var closed=false
-    private val activeCalls=ConcurrentHashMap.newKeySet<Call>()
+    private val activeCalls: MutableSet<Call> = java.util.Collections.newSetFromMap(ConcurrentHashMap<Call, Boolean>())
     private data class ConnectionAge(val born:Long,val setup:Long)
     private class Timing {val start=System.nanoTime();var connectStart=0L;var cold=false;var setup=0L}
     private val connections=WeakHashMap<Connection,ConnectionAge>()
@@ -85,7 +89,8 @@ class DnsOverHttps(sockets: ProtectedSockets, private val ipIdentity: Boolean = 
         }
     }
     private val http = OkHttpClient.Builder().eventListenerFactory(events).dispatcher(Dispatcher().apply{maxRequests=64;maxRequestsPerHost=32}).socketFactory(sockets.factory())
-        .connectionSpecs(listOf(ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS).tlsVersions(TlsVersion.TLS_1_3).build()))
+        .connectionSpecs(listOf(ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS).tlsVersions(*tlsVersions()).build()))
+        .apply { if (Trust.needsBundledRoots) sslSocketFactory(Trust.socketFactory, Trust.trustManager) }
         .proxy(Proxy.NO_PROXY)
         .dns(object : Dns {
             override fun lookup(hostname: String): List<InetAddress> {
@@ -155,14 +160,22 @@ class DnsOverTls(private val sockets: ProtectedSockets, private val ipIdentity: 
             try {
                 raw.connect(InetSocketAddress(address,853),2000);raw.soTimeout = 3000
                 val peer = if (ipIdentity) address.hostAddress!! else DnsEndpoint.HOST
-                val tls = (SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket(raw,peer,853,true) as SSLSocket
+                val tls = Trust.socketFactory.createSocket(raw,peer,853,true) as SSLSocket
                 try {
-                    tls.enabledProtocols = arrayOf("TLSv1.3")
-                    tls.sslParameters = tls.sslParameters.apply {
-                        endpointIdentificationAlgorithm = "HTTPS"
-                        serverNames = if (ipIdentity) emptyList() else listOf(SNIHostName(DnsEndpoint.HOST))
+                    tls.enabledProtocols = if (Build.VERSION.SDK_INT >= 29) arrayOf("TLSv1.3")
+                        else tls.supportedProtocols.filter { it == "TLSv1.3" || it == "TLSv1.2" }.toTypedArray()
+                    if (Build.VERSION.SDK_INT >= 24) {
+                        tls.sslParameters = tls.sslParameters.apply {
+                            endpointIdentificationAlgorithm = "HTTPS"
+                            serverNames = if (ipIdentity) emptyList() else listOf(SNIHostName(DnsEndpoint.HOST))
+                        }
+                    } else if (!ipIdentity) {
+                        runCatching { tls.javaClass.getMethod("setHostname", String::class.java).invoke(tls, peer) }
                     }
-                    tls.startHandshake();born=System.nanoTime();setupMillis=(born-start)/1_000_000;return tls
+                    tls.startHandshake()
+                    if (Build.VERSION.SDK_INT < 24 && !HttpsURLConnection.getDefaultHostnameVerifier().verify(peer, tls.session))
+                        throw SSLPeerUnverifiedException("DoT certificate does not match $peer")
+                    born=System.nanoTime();setupMillis=(born-start)/1_000_000;return tls
                 } catch (e: Exception) { tls.close();throw e }
             } catch (e: IOException) { raw.close();last = e }
         }
@@ -194,7 +207,7 @@ data class ProtocolHealth(val name: String, val ready: Boolean, val latencyMilli
 class DnsClient(private val service: VpnService, private val network: Network?, private val settings: DnsSettings,
     private val allowLocalDns: Boolean = false, transportOverride: List<DnsTransport>? = null,
     private val budgetMillis: Long = 6_000, private val attemptMillis: Long = 3_500) : Closeable {
-    val networkHandle:Long?=network?.networkHandle
+    val networkHandle:Long?=network?.let(Compat::id)
     private val sockets = ProtectedSockets(service,network)
     private val backend = network?.let { QuicBackend(service,it) }
     private val transports: List<DnsTransport> = transportOverride ?: buildList {

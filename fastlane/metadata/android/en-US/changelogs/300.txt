@@ -1,0 +1,5 @@
+- Runs on Android 5 and newer (previously Android 10)
+- Updates itself from GitHub releases after verifying checksum and signature
+- Protection restarts automatically after app updates and phone restarts
+- Quick Settings tile and a warning when another VPN turns protection off
+- Optional "location all the time" so Wi-Fi exceptions apply right after a restart

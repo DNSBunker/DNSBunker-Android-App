@@ -1,6 +1,6 @@
 # DNSBunker for Android
 
-Encrypted DNS for Android with the filtering resolver of [dnsbunker.org](https://dnsbunker.org). A local VPN receives Android's system DNS queries and forwards them only over encrypted, certificate-verified connections. All other traffic keeps going directly to its destination.
+Encrypted DNS for Android (5.0 and newer) with the filtering resolver of [dnsbunker.org](https://dnsbunker.org). A local VPN receives Android's system DNS queries and forwards them only over encrypted, certificate-verified connections. All other traffic keeps going directly to its destination.
 
 <p>
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1_protection.png" width="200" alt="Protection">
@@ -16,6 +16,9 @@ Encrypted DNS for Android with the filtering resolver of [dnsbunker.org](https:/
 - Live statistics kept only in memory: answered and blocked queries, PRO/TIF filter categories, response times
 - Wi-Fi exceptions, local name protection (`home.arpa`, `.local`, private reverse zones) and optional router DNS for trusted Wi-Fi networks
 - Automatic recovery after network changes, connection monitor, EDNS padding
+- Starts again by itself after app updates and phone restarts; Quick Settings tile; warning when another VPN takes over
+- Updates itself from the GitHub releases after verifying the SHA-256 checksum and the signing certificate (can be turned off)
+- Runs on Android 5.0 and newer
 - No ads, no trackers, no telemetry, no account; Android backups disabled
 - English, German, French, Spanish and Russian
 

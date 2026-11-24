@@ -8,7 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 object TunHealthProbe {
-    private val ports = ConcurrentHashMap.newKeySet<Int>()
+    private val ports: MutableSet<Int> = java.util.Collections.newSetFromMap(ConcurrentHashMap<Int, Boolean>())
     fun isHealthPort(port: Int) = port in ports
     suspend fun check(): Boolean = withContext(Dispatchers.IO) {
         try {

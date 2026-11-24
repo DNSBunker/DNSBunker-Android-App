@@ -13,6 +13,7 @@ data class DnsSettings(
     val allowLocalPlaintext: Boolean = false,
     val fallbackDoT: Boolean = true,
     val interceptPublicDns: Boolean = false,
+    val updateCheck: Boolean = true,
 )
 
 class UserSettings(context: Context) {
@@ -20,6 +21,17 @@ class UserSettings(context: Context) {
     val value = MutableStateFlow(read())
 
     fun current(): DnsSettings = read().also { value.value = it }
+
+    fun protectionWanted(): Boolean = prefs.getBoolean("protection_wanted", false)
+
+    fun setProtectionWanted(wanted: Boolean) {
+        prefs.edit().putBoolean("protection_wanted", wanted).apply()
+    }
+
+    fun lastUpdateCheck(): Long = prefs.getLong("update_last_check", 0)
+    fun setLastUpdateCheck(time: Long) { prefs.edit().putLong("update_last_check", time).apply() }
+    fun notifiedUpdate(): String? = prefs.getString("update_notified", null)
+    fun setNotifiedUpdate(version: String) { prefs.edit().putString("update_notified", version).apply() }
 
     private fun read() = DnsSettings(
         exemptSsids = prefs.getStringSet("exempt_ssids", emptySet())?.toSet() ?: emptySet(),
@@ -31,6 +43,7 @@ class UserSettings(context: Context) {
         allowLocalPlaintext = prefs.getBoolean("local_plaintext", false),
         fallbackDoT = prefs.getBoolean("dot_fallback", true),
         interceptPublicDns = prefs.getBoolean("intercept_public_dns",false),
+        updateCheck = prefs.getBoolean("update_check", true),
     )
 
     fun update(transform: (DnsSettings) -> DnsSettings) {
@@ -45,6 +58,7 @@ class UserSettings(context: Context) {
             .putBoolean("local_plaintext", next.allowLocalPlaintext)
             .putBoolean("dot_fallback", next.fallbackDoT)
             .putBoolean("intercept_public_dns",next.interceptPublicDns)
+            .putBoolean("update_check", next.updateCheck)
             .remove("domain_history")
             .apply()
         value.value = next

@@ -143,4 +143,24 @@
     <string name="current_wifi">Текущая сеть Wi-Fi: %1$s</string>
     <string name="wifi_needs_location">Для исключений Wi-Fi нужны разрешение на доступ к местоположению и включённая геолокация. Иначе Android скрывает имя сети.</string>
     <string name="wifi_lockdown_paused">Исключения приостановлены, пока в Android включена функция «Блокировать соединения без VPN».</string>
+    <string name="always_on_title">Постоянный VPN</string>
+    <string name="always_on_body">Защита автоматически включается после обновлений и перезагрузок. Для большей надёжности выберите DNSBunker постоянным VPN в настройках Android.</string>
+    <string name="warning_channel">Предупреждения</string>
+    <string name="revoked_title">Защита DNS отключена</string>
+    <string name="revoked_body">Другой VPN или Android остановил DNSBunker. Нажмите, чтобы снова включить защиту.</string>
+    <string name="bg_location_hint">Сразу после перезагрузки исключения работают, только если Android разрешает доступ к местоположению «всегда». Иначе они начинают действовать, когда вы откроете приложение.</string>
+    <string name="bg_location_action">Всегда разрешать доступ к местоположению</string>
+    <string name="update_auto_title">Автообновления</string>
+    <string name="update_auto_body">Раз в день проверяет на GitHub, есть ли новая версия. GitHub при этом видит ваш IP-адрес.</string>
+    <string name="update_check_now">Проверить обновления</string>
+    <string name="update_checking">Проверка…</string>
+    <string name="update_latest">У вас последняя версия.</string>
+    <string name="update_available">Доступна версия %1$s</string>
+    <string name="update_install">Обновить сейчас</string>
+    <string name="update_downloading">Загрузка и проверка обновления…</string>
+    <string name="update_installing">Установка…</string>
+    <string name="update_failed">Не удалось обновить. Повторите позже или скачайте с сайта.</string>
+    <string name="update_permission">Разрешите DNSBunker устанавливать приложения и снова нажмите «Обновить сейчас».</string>
+    <string name="update_channel">Обновления</string>
+    <string name="update_notification">Доступен DNSBunker %1$s. Нажмите, чтобы обновить.</string>
 </resources>

@@ -31,7 +31,7 @@ class LocalSplitDns(
     }
 
     suspend fun resolve(question: ByteArray): ByteArray = withContext(Dispatchers.IO) {
-        val connectivity = service.getSystemService(ConnectivityManager::class.java)
+        val connectivity = service.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val servers = connectivity.getLinkProperties(network)?.dnsServers.orEmpty()
             .filter(::localAddress)
         if (servers.isEmpty()) throw IOException("No trusted private network DNS server")
@@ -41,7 +41,7 @@ class LocalSplitDns(
             try {
                 socket.bind(InetSocketAddress(0))
                 if (!service.protect(socket)) throw IOException("Unable to protect split-DNS socket")
-                network.bindSocket(socket)
+                Compat.bind(network, socket)
                 socket.soTimeout = 2000
                 val packet = DatagramPacket(question, question.size, server, 53)
                 socket.send(packet)

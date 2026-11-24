@@ -24,11 +24,19 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import org.dnsbunker.android.core.AppState
 import org.dnsbunker.android.core.DnsSettings
 import org.dnsbunker.android.core.ProtectionStatus
 import org.dnsbunker.android.core.UserSettings
 import org.dnsbunker.android.core.WifiPolicy
+import org.dnsbunker.android.core.UpdateState
+import org.dnsbunker.android.core.Updater
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.dnsbunker.android.ui.DnsBunkerScreen
 import org.dnsbunker.android.ui.DnsBunkerTheme
 import org.dnsbunker.android.ui.ScreenActions
@@ -43,6 +51,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { prepareVpn() }
+
+    private val backgroundLocationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        refreshAndroidState()
+        refreshVpnIfRunning()
+    }
 
     private val wifiPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         refreshAndroidState()
@@ -77,6 +90,13 @@ class MainActivity : ComponentActivity() {
             },
             openPrivateDnsSettings = { launch(Intent(Settings.ACTION_WIRELESS_SETTINGS), Intent(Settings.ACTION_SETTINGS)) },
             openCaptivePortal = { launch(Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY), Intent(Settings.ACTION_WIFI_SETTINGS)) },
+            allowBackgroundLocation = {
+                if (Build.VERSION.SDK_INT >= 29) backgroundLocationPermission.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            },
+            setAutoUpdate = { enabled -> change { it.copy(updateCheck = enabled) }; if (enabled) checkUpdates(force = true) },
+            checkUpdates = { checkUpdates(force = true) },
+            installUpdate = ::installUpdate,
+            openVpnSettings = { launch(Intent(Settings.ACTION_VPN_SETTINGS), Intent(Settings.ACTION_WIRELESS_SETTINGS)) },
             runDiagnostics = { sendVpn(DnsVpnService.ACTION_DIAGNOSTICS) },
         )
         setContent {
@@ -86,9 +106,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onResume() {
         super.onResume()
         refreshAndroidState()
+        checkUpdates(force = intent?.getBooleanExtra(DnsVpnService.EXTRA_CHECK_UPDATE, false) == true)
+        intent?.removeExtra(DnsVpnService.EXTRA_CHECK_UPDATE)
         if (AppState.snapshot.value.wifiLocationReady) refreshVpnIfRunning()
     }
 
@@ -98,11 +125,49 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshAndroidState() {
-        val power = getSystemService(PowerManager::class.java)
+        val power = getSystemService(POWER_SERVICE) as PowerManager
         val mode = Settings.Global.getString(contentResolver, "private_dns_mode")
         val location = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
-            getSystemService(LocationManager::class.java)?.isLocationEnabled == true
-        AppState.update { it.copy(batteryExempt = power.isIgnoringBatteryOptimizations(packageName), privateDnsStrict = mode == "hostname", wifiLocationReady = location) }
+            LocationManagerCompat.isLocationEnabled(getSystemService(LOCATION_SERVICE) as LocationManager)
+        val background = Build.VERSION.SDK_INT < 29 ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+        AppState.update { it.copy(batteryExempt = Build.VERSION.SDK_INT < 23 || power.isIgnoringBatteryOptimizations(packageName),
+            privateDnsStrict = mode == "hostname", wifiLocationReady = location, backgroundLocation = background) }
+    }
+
+    private fun checkUpdates(force: Boolean) {
+        val busy = AppState.snapshot.value.updateState.let { it == UpdateState.CHECKING || it == UpdateState.DOWNLOADING || it == UpdateState.INSTALLING }
+        if (busy) return
+        if (!force && (!settings.current().updateCheck || System.currentTimeMillis() - settings.lastUpdateCheck() < 6 * 3_600_000L)) return
+        lifecycleScope.launch {
+            AppState.update { it.copy(updateState = UpdateState.CHECKING) }
+            try {
+                val release = Updater.check()
+                settings.setLastUpdateCheck(System.currentTimeMillis())
+                AppState.update { it.copy(updateState = if (release != null) UpdateState.AVAILABLE else UpdateState.LATEST, updateVersion = release?.version) }
+            } catch (c: CancellationException) { throw c } catch (_: Exception) {
+                AppState.update { it.copy(updateState = UpdateState.FAILED) }
+            }
+        }
+    }
+
+    private fun installUpdate() {
+        val release = Updater.available ?: return checkUpdates(force = true)
+        if (!Updater.canInstall(this)) {
+            AppState.update { it.copy(updateState = UpdateState.NEEDS_PERMISSION) }
+            launch(Updater.installPermissionIntent(this), Intent(Settings.ACTION_SECURITY_SETTINGS))
+            return
+        }
+        lifecycleScope.launch {
+            AppState.update { it.copy(updateState = UpdateState.DOWNLOADING) }
+            try {
+                val apk = Updater.download(this@MainActivity, release)
+                AppState.update { it.copy(updateState = UpdateState.INSTALLING) }
+                withContext(Dispatchers.IO) { Updater.install(this@MainActivity, apk) }
+            } catch (c: CancellationException) { throw c } catch (_: Exception) {
+                AppState.update { it.copy(updateState = UpdateState.FAILED) }
+            }
+        }
     }
 
     private fun change(transform: (DnsSettings) -> DnsSettings) {

@@ -37,6 +37,9 @@ data class RuntimeSnapshot(
     val currentWifi: String? = null,
     val lockdown: Boolean = false,
     val wifiLocationReady: Boolean = false,
+    val backgroundLocation: Boolean = true,
+    val updateState: UpdateState = UpdateState.IDLE,
+    val updateVersion: String? = null,
 )
 object AppState {
     val snapshot = MutableStateFlow(RuntimeSnapshot())

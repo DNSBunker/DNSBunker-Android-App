@@ -32,7 +32,7 @@ object NativeQuic {
                 append(Base64.encodeToString(certificate.encoded, Base64.NO_WRAP)).append('\n')
                 append("-----END CERTIFICATE-----\n")
             }
-        }.also { if (it.isBlank()) throw IOException("No Android system trust anchors") }
+        }.also { if (it.isBlank()) throw IOException("No Android system trust anchors") } + Trust.BUNDLED_ROOTS
     }
 }
 
@@ -55,7 +55,7 @@ class QuicBackend(private val service: VpnService, private val network: Network)
         try {
             socket.bind(InetSocketAddress(InetAddress.getByName(if (':' in ip) "::" else "0.0.0.0"), 0))
             if (!service.protect(socket)) throw IOException("Unable to protect QUIC socket")
-            network.bindSocket(socket)
+            Compat.bind(network, socket)
             val fd = ParcelFileDescriptor.fromDatagramSocket(socket).detachFd()
             val handle = NativeQuic.nativeCreate(fd, ip, if (ipIdentity) ip else "dnsbunker.org", roots)
             if (handle == 0L) throw IOException("Unable to initialize verified QUIC")

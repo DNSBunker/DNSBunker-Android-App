@@ -11,10 +11,10 @@ cd "$native_root/quic"
 go mod verify >/dev/null
 for target in arm64-v8a armeabi-v7a x86 x86_64; do
   case "$target" in
-    arm64-v8a) arch=arm64; cc=aarch64-linux-android29-clang ;;
+    arm64-v8a) arch=arm64; cc=aarch64-linux-android21-clang ;;
     armeabi-v7a) arch=arm; cc=armv7a-linux-androideabi29-clang ;;
-    x86) arch=386; cc=i686-linux-android29-clang ;;
-    x86_64) arch=amd64; cc=x86_64-linux-android29-clang ;;
+    x86) arch=386; cc=i686-linux-android21-clang ;;
+    x86_64) arch=amd64; cc=x86_64-linux-android21-clang ;;
   esac
   mkdir -p "$output_dir/$target"
   GOARCH="$arch" GOARM=7 CC="$clang_dir/$cc" go build -buildvcs=false -trimpath -buildmode=c-shared \

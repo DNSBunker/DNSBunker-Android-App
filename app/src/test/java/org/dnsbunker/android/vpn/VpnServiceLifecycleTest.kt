@@ -77,4 +77,50 @@ class VpnServiceLifecycleTest {
             assertFalse("explicit start must re-arm the service", stopping.getBoolean(service))
         } finally { controller.destroy() }
     }
+
+    @Test fun `explicit start and stop remember whether protection should come back after updates`() {
+        val controller = Robolectric.buildService(DnsVpnService::class.java).create()
+        val service = controller.get()
+        val settings = UserSettings(service)
+        settings.update { it.copy(interceptPublicDns = true) }
+        try {
+            service.onStartCommand(Intent().setAction(DnsVpnService.ACTION_START), 0, 1)
+            assertTrue(settings.protectionWanted())
+            service.onStartCommand(Intent().setAction(DnsVpnService.ACTION_REFRESH), 0, 2)
+            assertTrue(settings.protectionWanted())
+            service.onStartCommand(Intent().setAction(DnsVpnService.ACTION_STOP), 0, 3)
+            assertFalse(settings.protectionWanted())
+        } finally { controller.destroy() }
+    }
+
+    @Test fun `restart receiver only reacts to boot and update when protection was wanted`() {
+        val app = org.robolectric.RuntimeEnvironment.getApplication()
+        val shadow = org.robolectric.Shadows.shadowOf(app)
+        val receiver = RestartReceiver()
+        org.robolectric.shadows.ShadowVpnService.setPrepareResult(null)
+        UserSettings(app).setProtectionWanted(false)
+        receiver.onReceive(app, Intent(Intent.ACTION_BOOT_COMPLETED))
+        assertNull(shadow.nextStartedService)
+        UserSettings(app).setProtectionWanted(true)
+        receiver.onReceive(app, Intent(Intent.ACTION_TIME_CHANGED))
+        assertNull(shadow.nextStartedService)
+        receiver.onReceive(app, Intent(Intent.ACTION_MY_PACKAGE_REPLACED))
+        val started = shadow.nextStartedService
+        assertNotNull(started)
+        assertEquals(DnsVpnService.ACTION_START, started.action)
+    }
+
+    @Test fun `losing the VPN to another app warns the user and forgets the wish to run`() {
+        val controller = Robolectric.buildService(DnsVpnService::class.java).create()
+        val service = controller.get()
+        val manager = service.getSystemService(NotificationManager::class.java)
+        try {
+            UserSettings(service).setProtectionWanted(true)
+            service.onRevoke()
+            assertFalse(UserSettings(service).protectionWanted())
+            val warning = org.robolectric.Shadows.shadowOf(manager).allNotifications
+                .firstOrNull { it.extras.getString(android.app.Notification.EXTRA_TITLE) == service.getString(org.dnsbunker.android.R.string.revoked_title) }
+            assertNotNull("revocation warning posted", warning)
+        } finally { controller.destroy() }
+    }
 }

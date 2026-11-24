@@ -143,4 +143,24 @@
     <string name="current_wifi">Wi-Fi actual: %1$s</string>
     <string name="wifi_needs_location">Las excepciones Wi-Fi necesitan el permiso de ubicación y la ubicación activada. Si no, Android oculta el nombre de la red.</string>
     <string name="wifi_lockdown_paused">Las excepciones están en pausa mientras «Bloquear conexiones sin VPN» de Android esté activado.</string>
+    <string name="always_on_title">VPN siempre activa</string>
+    <string name="always_on_body">La protección se reinicia automáticamente tras actualizaciones y reinicios. Para mayor fiabilidad, elige DNSBunker como VPN siempre activa en Android.</string>
+    <string name="warning_channel">Avisos</string>
+    <string name="revoked_title">La protección DNS se ha desactivado</string>
+    <string name="revoked_body">Otra VPN o Android ha cerrado DNSBunker. Toca para volver a activar la protección.</string>
+    <string name="bg_location_hint">Las excepciones solo se aplican justo después de reiniciar si Android permite el acceso a la ubicación «todo el tiempo». Si no, funcionan en cuanto abres la aplicación.</string>
+    <string name="bg_location_action">Permitir la ubicación todo el tiempo</string>
+    <string name="update_auto_title">Actualizaciones automáticas</string>
+    <string name="update_auto_body">Comprueba una vez al día en GitHub si hay una versión nueva. GitHub ve tu dirección IP al hacerlo.</string>
+    <string name="update_check_now">Buscar actualizaciones</string>
+    <string name="update_checking">Comprobando…</string>
+    <string name="update_latest">Tienes la versión más reciente.</string>
+    <string name="update_available">La versión %1$s está disponible</string>
+    <string name="update_install">Actualizar ahora</string>
+    <string name="update_downloading">Descargando y verificando la actualización…</string>
+    <string name="update_installing">Instalando…</string>
+    <string name="update_failed">La actualización ha fallado. Inténtalo más tarde o descárgala desde la web.</string>
+    <string name="update_permission">Permite que DNSBunker instale aplicaciones y vuelve a tocar «Actualizar ahora».</string>
+    <string name="update_channel">Actualizaciones</string>
+    <string name="update_notification">DNSBunker %1$s está disponible. Toca para actualizar.</string>
 </resources>

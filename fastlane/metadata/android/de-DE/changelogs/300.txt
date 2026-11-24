@@ -1,0 +1,5 @@
+- Läuft ab Android 5 (bisher ab Android 10)
+- Aktualisiert sich selbst über GitHub-Releases, nach Prüfung von Prüfsumme und Signatur
+- Schutz startet nach App-Updates und Neustarts automatisch wieder
+- Schnelleinstellungs-Kachel und Warnung, wenn ein anderes VPN den Schutz beendet
+- Optional „Standort immer erlauben“, damit WLAN-Ausnahmen direkt nach einem Neustart greifen

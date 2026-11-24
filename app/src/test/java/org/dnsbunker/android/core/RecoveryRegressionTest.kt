@@ -104,4 +104,12 @@ class RecoveryRegressionTest {
         assertEquals(1L, UnderlayPolicy.choose(listOf(brokenWifi.copy(validated = true), mobile), current = 2))
         assertEquals(1L, UnderlayPolicy.choose(listOf(brokenWifi, mobile.copy(validated = false)), current = null))
     }
+
+    @Test fun `update versions compare numerically`() {
+        assertTrue(Updater.newer("0.3.0", "0.2.3"))
+        assertTrue(Updater.newer("0.10.0", "0.9.9"))
+        assertTrue(Updater.newer("1.0", "0.99.99"))
+        assertFalse(Updater.newer("0.2.3", "0.2.3"))
+        assertFalse(Updater.newer("0.2.2", "0.2.10"))
+    }
 }

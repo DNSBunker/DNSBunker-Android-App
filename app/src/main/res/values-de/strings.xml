@@ -143,4 +143,24 @@
     <string name="current_wifi">Aktuelles WLAN: %1$s</string>
     <string name="wifi_needs_location">WLAN-Ausnahmen brauchen die Standortberechtigung und eingeschalteten Standort. Sonst verbirgt Android den Netzwerknamen.</string>
     <string name="wifi_lockdown_paused">Ausnahmen sind pausiert, solange Androids „Verbindungen ohne VPN blockieren“ aktiv ist.</string>
+    <string name="always_on_title">Always-on-VPN</string>
+    <string name="always_on_body">Der Schutz startet nach Updates und Neustarts automatisch wieder. Noch zuverlässiger: DNSBunker in Android als dauerhaft aktives VPN auswählen.</string>
+    <string name="warning_channel">Warnungen</string>
+    <string name="revoked_title">DNS-Schutz wurde ausgeschaltet</string>
+    <string name="revoked_body">Ein anderes VPN oder Android hat DNSBunker beendet. Tippe, um den Schutz wieder einzuschalten.</string>
+    <string name="bg_location_hint">Direkt nach einem Neustart greifen Ausnahmen nur, wenn Android den Standortzugriff „immer“ erlaubt. Sonst wirken sie, sobald du die App öffnest.</string>
+    <string name="bg_location_action">Standort immer erlauben</string>
+    <string name="update_auto_title">Automatische Updates</string>
+    <string name="update_auto_body">Prüft einmal täglich bei GitHub, ob es eine neue Version gibt. GitHub sieht dabei deine IP-Adresse.</string>
+    <string name="update_check_now">Nach Updates suchen</string>
+    <string name="update_checking">Wird geprüft…</string>
+    <string name="update_latest">Du hast die neueste Version.</string>
+    <string name="update_available">Version %1$s ist verfügbar</string>
+    <string name="update_install">Jetzt aktualisieren</string>
+    <string name="update_downloading">Update wird geladen und geprüft…</string>
+    <string name="update_installing">Wird installiert…</string>
+    <string name="update_failed">Das Update ist fehlgeschlagen. Versuche es später erneut oder lade es von der Website.</string>
+    <string name="update_permission">Erlaube DNSBunker das Installieren von Apps und tippe dann erneut auf „Jetzt aktualisieren“.</string>
+    <string name="update_channel">Updates</string>
+    <string name="update_notification">DNSBunker %1$s ist verfügbar. Tippe zum Aktualisieren.</string>
 </resources>

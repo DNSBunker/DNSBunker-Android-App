@@ -87,6 +87,7 @@ import org.dnsbunker.android.core.AppState
 import org.dnsbunker.android.core.DnsSettings
 import org.dnsbunker.android.core.ProtectionStatus
 import org.dnsbunker.android.core.RuntimeSnapshot
+import org.dnsbunker.android.core.UpdateState
 import java.text.NumberFormat
 
 private val Navy = Color(0xFF061730)
@@ -134,6 +135,11 @@ data class ScreenActions(
     val openBatterySettings: () -> Unit,
     val openPrivateDnsSettings: () -> Unit,
     val openCaptivePortal: () -> Unit,
+    val openVpnSettings: () -> Unit,
+    val allowBackgroundLocation: () -> Unit,
+    val setAutoUpdate: (Boolean) -> Unit,
+    val checkUpdates: () -> Unit,
+    val installUpdate: () -> Unit,
     val runDiagnostics: () -> Unit,
 )
 
@@ -236,6 +242,7 @@ private fun RowDivider() = HorizontalDivider(color = MaterialTheme.colorScheme.o
 @Composable
 private fun ProtectionPage(status: RuntimeSnapshot, actions: ScreenActions, onConnect: () -> Unit) {
     StatusHero(status, onConnect)
+    UpdateCard(status, actions.installUpdate)
     if (status.privateDnsStrict) PrivateDnsWarning(actions.openPrivateDnsSettings)
     if (status.captivePortal) BunkerCard {
         Text(stringResource(R.string.captive_title), fontWeight = FontWeight.Bold)
@@ -478,8 +485,12 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
         RowDivider()
         SwitchRow(stringResource(R.string.watchdog), stringResource(R.string.watchdog_body), settings.watchdogEnabled, actions.setWatchdog)
         RowDivider()
-        if (status.batteryExempt) TextRow(stringResource(R.string.battery_title), stringResource(R.string.battery_exempt))
-        else LinkRow(stringResource(R.string.battery_title), stringResource(R.string.battery_action)) { confirmBattery = true }
+        LinkRow(stringResource(R.string.always_on_title), stringResource(R.string.always_on_body), onClick = actions.openVpnSettings)
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            RowDivider()
+            if (status.batteryExempt) TextRow(stringResource(R.string.battery_title), stringResource(R.string.battery_exempt))
+            else LinkRow(stringResource(R.string.battery_title), stringResource(R.string.battery_action)) { confirmBattery = true }
+        }
     }
 
     SectionCard(stringResource(R.string.section_wifi)) {
@@ -491,6 +502,10 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
         }
         if (!status.wifiLocationReady) { Hint(stringResource(R.string.wifi_needs_location), warning()); Spacer(Modifier.height(6.dp)) }
         if (status.lockdown) { Hint(stringResource(R.string.wifi_lockdown_paused), warning()); Spacer(Modifier.height(6.dp)) }
+        if (status.wifiLocationReady && !status.backgroundLocation && (settings.exemptSsids.isNotEmpty() || settings.trustedLocalDnsSsids.isNotEmpty())) {
+            Hint(stringResource(R.string.bg_location_hint))
+            TextButton(onClick = actions.allowBackgroundLocation) { Text(stringResource(R.string.bg_location_action)) }
+        }
         if (settings.exemptSsids.isEmpty()) Hint(stringResource(R.string.no_exceptions))
         NetworkList(settings.exemptSsids, actions.removeExemptWifi)
         OutlinedButton(onClick = { confirmWifi = true }, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
@@ -524,10 +539,12 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
         SwitchRow(stringResource(R.string.padding_title), stringResource(R.string.padding_body), settings.ednsPaddingEnabled, actions.setPadding)
         RowDivider()
         SwitchRow(stringResource(R.string.dot_fallback), stringResource(R.string.dot_fallback_body), settings.fallbackDoT, actions.setDotFallback)
-        RowDivider()
-        LinkRow(stringResource(R.string.private_dns_setting),
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            RowDivider()
+            LinkRow(stringResource(R.string.private_dns_setting),
             stringResource(if (status.privateDnsStrict) R.string.private_dns_title else R.string.private_dns_ok),
             highlight = status.privateDnsStrict, onClick = actions.openPrivateDnsSettings)
+        }
     }
 
     SectionCard(stringResource(R.string.section_about)) {
@@ -547,6 +564,10 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
         LinkRow(stringResource(R.string.source_code), SOURCE_URL.removePrefix("https://")) { uri(SOURCE_URL) }
         RowDivider()
         LinkRow(stringResource(R.string.third_party), null) { showLicenses = true }
+        RowDivider()
+        SwitchRow(stringResource(R.string.update_auto_title), stringResource(R.string.update_auto_body), settings.updateCheck, actions.setAutoUpdate)
+        RowDivider()
+        LinkRow(stringResource(R.string.update_check_now), updateText(status), onClick = actions.checkUpdates)
         RowDivider()
         TextRow(stringResource(R.string.version_line, BuildConfig.VERSION_NAME, LICENSE_ID), stringResource(R.string.footer))
     }
@@ -580,6 +601,30 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
         dismissButton = { TextButton(onClick = { confirmBattery = false }) { Text(stringResource(R.string.cancel)) } },
     )
     if (showLicenses) LicensesDialog { showLicenses = false }
+}
+
+@Composable
+private fun updateText(status: RuntimeSnapshot): String? = when (status.updateState) {
+    UpdateState.IDLE -> null
+    UpdateState.CHECKING -> stringResource(R.string.update_checking)
+    UpdateState.LATEST -> stringResource(R.string.update_latest)
+    UpdateState.AVAILABLE -> status.updateVersion?.let { stringResource(R.string.update_available, it) }
+    UpdateState.DOWNLOADING -> stringResource(R.string.update_downloading)
+    UpdateState.INSTALLING -> stringResource(R.string.update_installing)
+    UpdateState.NEEDS_PERMISSION -> stringResource(R.string.update_permission)
+    UpdateState.FAILED -> stringResource(R.string.update_failed)
+}
+
+@Composable
+private fun UpdateCard(status: RuntimeSnapshot, install: () -> Unit) {
+    val version = status.updateVersion ?: return
+    if (status.updateState == UpdateState.LATEST || status.updateState == UpdateState.IDLE) return
+    BunkerCard {
+        Text(stringResource(R.string.update_available, version), fontWeight = FontWeight.Bold)
+        val busy = status.updateState == UpdateState.DOWNLOADING || status.updateState == UpdateState.INSTALLING
+        updateText(status)?.takeIf { status.updateState != UpdateState.AVAILABLE }?.let { Hint(it) }
+        Button(onClick = install, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.update_install)) }
+    }
 }
 
 @Composable

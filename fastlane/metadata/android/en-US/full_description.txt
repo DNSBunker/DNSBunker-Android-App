@@ -13,7 +13,9 @@
 <li>One switch to turn protection on, with a clear status and live statistics: answered and blocked queries, filter categories (PRO and TIF) and response times.</li>
 <li>Wi-Fi exceptions for networks where you want to use the local DNS.</li>
 <li>Local names such as nas.home.arpa are never sent to the public resolver; router DNS can be allowed for trusted Wi-Fi networks.</li>
-<li>Automatic recovery after network changes, dark mode and five languages (English, German, French, Spanish, Russian).</li>
+<li>Automatic recovery after network changes, restart after updates and phone restarts, Quick Settings tile, dark mode and five languages (English, German, French, Spanish, Russian).</li>
+<li>Built-in updates from the official GitHub releases, verified by checksum and signature.</li>
+<li>Runs on Android 5.0 and newer.</li>
 </ul>
 
 <p><b>Privacy</b></p>
@@ -29,6 +31,9 @@
 <li>Location: only needed to read the name of the current Wi-Fi for Wi-Fi rules. It is requested only when you add such a rule.</li>
 <li>Notifications: shows the protection status while it is active.</li>
 <li>Battery optimization: optional request so Android stops the protection less often.</li>
+<li>Run at startup: turns protection back on after a phone restart if it was on before.</li>
+<li>Install apps: only used to install verified updates of DNSBunker itself.</li>
+<li>Location all the time: optional, only so Wi-Fi exceptions apply right after a restart.</li>
 </ul>
 
 <p>Apps that use their own encrypted DNS (for example some browsers) are not affected by any system DNS protection. Privacy policy: https://dnsbunker.org/privacy.html</p>

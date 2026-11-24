@@ -12,10 +12,10 @@ android {
 
     defaultConfig {
         applicationId = "org.dnsbunker.android"
-        minSdk = 29
+        minSdk = 21
         targetSdk = 36
-        versionCode = 202
-        versionName = "0.2.2"
+        versionCode = 300
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -28,7 +28,7 @@ android {
             keyAlias = providers.environmentVariable("DNSBUNKER_KEY_ALIAS").getOrElse("dnsbunker-release")
             keyPassword = providers.environmentVariable("DNSBUNKER_KEY_PASSWORD").orNull
                 ?: error("DNSBUNKER_KEY_PASSWORD is required")
-            enableV1Signing = false
+            enableV1Signing = true
             enableV2Signing = true
             enableV3Signing = true
         }

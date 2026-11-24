@@ -143,4 +143,24 @@
     <string name="current_wifi">Wi-Fi actuel : %1$s</string>
     <string name="wifi_needs_location">Les exceptions Wi-Fi nécessitent l’autorisation de localisation et la localisation activée. Sinon, Android masque le nom du réseau.</string>
     <string name="wifi_lockdown_paused">Les exceptions sont suspendues tant que l’option Android « Bloquer les connexions sans VPN » est activée.</string>
+    <string name="always_on_title">VPN permanent</string>
+    <string name="always_on_body">La protection redémarre automatiquement après les mises à jour et les redémarrages. Pour plus de fiabilité, choisis DNSBunker comme VPN permanent dans Android.</string>
+    <string name="warning_channel">Alertes</string>
+    <string name="revoked_title">La protection DNS a été désactivée</string>
+    <string name="revoked_body">Un autre VPN ou Android a arrêté DNSBunker. Touche pour réactiver la protection.</string>
+    <string name="bg_location_hint">Les exceptions ne s’appliquent juste après un redémarrage que si Android autorise l’accès à la position « tout le temps ». Sinon, elles fonctionnent dès que tu ouvres l’application.</string>
+    <string name="bg_location_action">Toujours autoriser la position</string>
+    <string name="update_auto_title">Mises à jour automatiques</string>
+    <string name="update_auto_body">Vérifie une fois par jour sur GitHub si une nouvelle version existe. GitHub voit alors ton adresse IP.</string>
+    <string name="update_check_now">Rechercher des mises à jour</string>
+    <string name="update_checking">Vérification…</string>
+    <string name="update_latest">Tu as la dernière version.</string>
+    <string name="update_available">La version %1$s est disponible</string>
+    <string name="update_install">Mettre à jour</string>
+    <string name="update_downloading">Téléchargement et vérification de la mise à jour…</string>
+    <string name="update_installing">Installation…</string>
+    <string name="update_failed">La mise à jour a échoué. Réessaie plus tard ou télécharge-la depuis le site.</string>
+    <string name="update_permission">Autorise DNSBunker à installer des applications, puis touche à nouveau « Mettre à jour ».</string>
+    <string name="update_channel">Mises à jour</string>
+    <string name="update_notification">DNSBunker %1$s est disponible. Touche pour mettre à jour.</string>
 </resources>
