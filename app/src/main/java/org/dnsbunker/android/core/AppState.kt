@@ -35,6 +35,8 @@ data class RuntimeSnapshot(
     val recentBlocked: List<Long> = List(24) { 0L },
     val startedAtMillis: Long? = null,
     val currentWifi: String? = null,
+    val lockdown: Boolean = false,
+    val wifiLocationReady: Boolean = false,
 )
 object AppState {
     val snapshot = MutableStateFlow(RuntimeSnapshot())

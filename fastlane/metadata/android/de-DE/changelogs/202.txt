@@ -1,0 +1,2 @@
+- WLAN-Ausnahmen greifen jetzt auch, wenn die App im Hintergrund ist: Der VPN-Dienst darf den WLAN-Namen mit der erteilten Standortberechtigung lesen, und ein erkannter Name bleibt für diese Verbindung gemerkt
+- Die Einstellungen zeigen das aktuelle WLAN mit Status und erklären, wenn der Standortzugriff fehlt oder Androids „Verbindungen ohne VPN blockieren“ die Ausnahmen pausiert

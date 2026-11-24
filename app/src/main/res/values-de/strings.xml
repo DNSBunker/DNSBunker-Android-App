@@ -2,9 +2,7 @@
 <resources>
     <string name="app_name">DNSBunker</string>
     <string name="nav_protection">Schutz</string>
-    <string name="nav_wifi">WLAN</string>
     <string name="nav_statistics">Statistik</string>
-    <string name="nav_privacy">Privatsphäre</string>
     <string name="footer">DNS-Schutz · Keine Werbung · Kein Tracking</string>
     <string name="vpn_title">DNS-Schutz mit lokaler VPN-Verbindung</string>
     <string name="vpn_body">Android nutzt eine lokale VPN-Verbindung, damit DNSBunker System-DNS-Anfragen verschlüsselt an dnsbunker.org senden kann. Dein übriger Internetverkehr läuft direkt. Apps mit eigener DNS-Auflösung können diesen Schutz umgehen. Ein anderes VPN wird abgelöst. Die App überträgt keine Telemetrie.</string>
@@ -142,4 +140,7 @@
     <string name="private_dns_ok">Kein abweichender Anbieter eingestellt.</string>
     <string name="close">Schließen</string>
     <string name="protocol">Protokoll</string>
+    <string name="current_wifi">Aktuelles WLAN: %1$s</string>
+    <string name="wifi_needs_location">WLAN-Ausnahmen brauchen die Standortberechtigung und eingeschalteten Standort. Sonst verbirgt Android den Netzwerknamen.</string>
+    <string name="wifi_lockdown_paused">Ausnahmen sind pausiert, solange Androids „Verbindungen ohne VPN blockieren“ aktiv ist.</string>
 </resources>

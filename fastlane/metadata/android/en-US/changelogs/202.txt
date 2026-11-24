@@ -1,0 +1,2 @@
+- Wi-Fi exceptions now also work while the app is in the background: the VPN service may read the Wi-Fi name with the location permission you granted, and a recognised network name is remembered for that connection
+- Settings show the current Wi-Fi and its state, and explain when location access is missing or Android's "Block connections without VPN" pauses exceptions

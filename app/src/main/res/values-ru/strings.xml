@@ -2,9 +2,7 @@
 <resources>
     <string name="app_name">DNSBunker</string>
     <string name="nav_protection">Защита</string>
-    <string name="nav_wifi">Wi-Fi</string>
     <string name="nav_statistics">Статистика</string>
-    <string name="nav_privacy">Приватность</string>
     <string name="footer">Защита DNS · Без рекламы и слежки</string>
     <string name="vpn_title">Защита DNS через локальный VPN</string>
     <string name="vpn_body">Android использует локальный VPN для зашифрованной отправки системных DNS-запросов на dnsbunker.org. Остальной трафик идёт напрямую. Приложения со своим DNS могут обходить эту защиту. Другой VPN будет отключён. Приложение не отправляет телеметрию.</string>
@@ -142,4 +140,7 @@
     <string name="private_dns_ok">Конфликтующий провайдер не задан.</string>
     <string name="close">Закрыть</string>
     <string name="protocol">Протокол</string>
+    <string name="current_wifi">Текущая сеть Wi-Fi: %1$s</string>
+    <string name="wifi_needs_location">Для исключений Wi-Fi нужны разрешение на доступ к местоположению и включённая геолокация. Иначе Android скрывает имя сети.</string>
+    <string name="wifi_lockdown_paused">Исключения приостановлены, пока в Android включена функция «Блокировать соединения без VPN».</string>
 </resources>

@@ -8,6 +8,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -102,34 +104,66 @@ class DnsVpnService : VpnService() {
     }
     @Volatile private var activeNetwork: Network? = null
 
-    private val networkCallback: ConnectivityManager.NetworkCallback by lazy {
+    private val knownSsid = ConcurrentHashMap<Network, String>()
+    @Volatile private var locationForeground = false
+
+    private fun underlayLost(network: Network) {
+        capabilities.remove(network)
+        knownSsid.remove(network)
+        invalidateResolver(network)
+        scheduleNetworkChange()
+    }
+    private fun underlayChanged(network: Network, caps: NetworkCapabilities) {
+        val before = knownSsid[network]
+        val old = capabilities.put(network, caps)
+        val after = rememberSsid(network, caps)
+        if (old == null || meaningfulChange(old, caps) || before != after) scheduleNetworkChange()
+    }
+    private fun newNetworkCallback(): ConnectivityManager.NetworkCallback =
         if (Build.VERSION.SDK_INT >= 31) {
             object : ConnectivityManager.NetworkCallback(ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO) {
                 override fun onAvailable(network: Network) = scheduleNetworkChange()
-                override fun onLost(network: Network) {
-                    capabilities.remove(network)
-                    invalidateResolver(network)
-                    scheduleNetworkChange()
-                }
-                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                    val old=capabilities.put(network,caps)
-                    if (old == null || meaningfulChange(old,caps)) scheduleNetworkChange()
-                }
+                override fun onLost(network: Network) = underlayLost(network)
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = underlayChanged(network, caps)
             }
         } else {
             object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) = scheduleNetworkChange()
-                override fun onLost(network: Network) {
-                    capabilities.remove(network)
-                    invalidateResolver(network)
-                    scheduleNetworkChange()
-                }
-                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                    val old=capabilities.put(network,caps)
-                    if (old == null || meaningfulChange(old,caps)) scheduleNetworkChange()
-                }
+                override fun onLost(network: Network) = underlayLost(network)
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = underlayChanged(network, caps)
             }
         }
+    private var networkCallback: ConnectivityManager.NetworkCallback = newNetworkCallback()
+    private val underlayRequest by lazy { NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build() }
+
+    private fun hasLocationAccess(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
+            getSystemService(LocationManager::class.java)?.isLocationEnabled == true
+
+    private fun enterForeground(text: String, refresh: Boolean = true) {
+        val notification = notification(text)
+        var withLocation = false
+        if (Build.VERSION.SDK_INT >= 34) {
+            val base = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            if (hasLocationAccess()) {
+                withLocation = try {
+                    startForeground(NOTIFICATION_ID, notification, base or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION); true
+                } catch (_: Exception) { false }
+            }
+            if (!withLocation) startForeground(NOTIFICATION_ID, notification, base)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+            withLocation = hasLocationAccess()
+        }
+        val gained = withLocation && !locationForeground
+        locationForeground = withLocation
+        if (gained && refresh) refreshNetworkCallback()
+    }
+
+    private fun refreshNetworkCallback() {
+        try { networkManager.unregisterNetworkCallback(networkCallback) } catch (_: Exception) { }
+        networkCallback = newNetworkCallback()
+        try { networkManager.registerNetworkCallback(underlayRequest, networkCallback) } catch (_: SecurityException) { }
     }
 
     override fun onCreate() {
@@ -138,12 +172,9 @@ class DnsVpnService : VpnService() {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, getString(R.string.channel), NotificationManager.IMPORTANCE_LOW)
         )
-        startForeground(NOTIFICATION_ID, notification(getString(R.string.preparing)))
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-            .build()
+        enterForeground(getString(R.string.preparing), refresh = false)
         try {
-            networkManager.registerNetworkCallback(request, networkCallback)
+            networkManager.registerNetworkCallback(underlayRequest, networkCallback)
             networkManager.registerNetworkCallback(NetworkRequest.Builder().removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
                 .addTransportType(NetworkCapabilities.TRANSPORT_VPN).build(),vpnCallback)
         } catch (_: SecurityException) {
@@ -154,7 +185,7 @@ class DnsVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         if (action != ACTION_STOP) {
-            startForeground(NOTIFICATION_ID, notification(notificationText ?: getString(R.string.preparing)))
+            enterForeground(notificationText ?: getString(R.string.preparing))
             if (action == ACTION_REFRESH || action == ACTION_DIAGNOSTICS) {
                 if (stopping) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -200,8 +231,15 @@ class DnsVpnService : VpnService() {
 
     private fun meaningfulChange(old: NetworkCapabilities, next: NetworkCapabilities): Boolean =
         listOf(NetworkCapabilities.NET_CAPABILITY_INTERNET,NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED,
-            NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL).any { old.hasCapability(it) != next.hasCapability(it) } ||
-            (old.transportInfo as? WifiInfo)?.ssid != (next.transportInfo as? WifiInfo)?.ssid
+            NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL).any { old.hasCapability(it) != next.hasCapability(it) }
+
+    private fun rememberSsid(network: Network, caps: NetworkCapabilities): String? {
+        if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return null
+        val info = if (Build.VERSION.SDK_INT >= 31) caps.transportInfo as? WifiInfo
+            else @Suppress("DEPRECATION") (applicationContext.getSystemService(WIFI_SERVICE) as WifiManager).connectionInfo
+        WifiPolicy.normalizeSsid(info?.ssid)?.let { knownSsid[network] = it }
+        return knownSsid[network]
+    }
 
     @Suppress("DEPRECATION")
     private fun availableUnderlay(): Network? {
@@ -234,11 +272,8 @@ class DnsVpnService : VpnService() {
         val locationGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
         if (!locationGranted) return null
-        val caps = capabilities[network] ?: networkManager.getNetworkCapabilities(network) ?: return null
-        if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return null
-        val info = if (Build.VERSION.SDK_INT >= 31) caps.transportInfo as? WifiInfo
-            else @Suppress("DEPRECATION") (applicationContext.getSystemService(WIFI_SERVICE) as WifiManager).connectionInfo
-        return WifiPolicy.normalizeSsid(info?.ssid ?: return null)
+        val caps = capabilities[network] ?: networkManager.getNetworkCapabilities(network) ?: return knownSsid[network]
+        return rememberSsid(network, caps)
     }
 
     private suspend fun reconcile(renewResolver: Boolean = false) = reconcileMutex.withLock {
@@ -248,7 +283,7 @@ class DnsVpnService : VpnService() {
         val profile = settings.current()
         val currentSsid = ssid(underlay)
         val caps=underlay?.let { capabilities[it] ?: networkManager.getNetworkCapabilities(it) }
-        AppState.update { it.copy(underlayAvailable=underlay!=null,currentWifi=currentSsid,
+        AppState.update { it.copy(underlayAvailable=underlay!=null,currentWifi=currentSsid,lockdown=isLockdownEnabled,
             captivePortal=caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)==true,
             underlayValidated=caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)==true) }
         activeNetwork = underlay

@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.ContentObserver
+import android.location.LocationManager
 import android.net.Uri
 import android.net.VpnService
 import android.net.wifi.WifiManager
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { prepareVpn() }
 
     private val wifiPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        refreshAndroidState()
         if (grants[Manifest.permission.ACCESS_FINE_LOCATION] == true) addCurrentWifi(pendingWifiAction)
         else Toast.makeText(this, R.string.wifi_unavailable, Toast.LENGTH_LONG).show()
     }
@@ -87,6 +89,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         refreshAndroidState()
+        if (AppState.snapshot.value.wifiLocationReady) refreshVpnIfRunning()
     }
 
     override fun onDestroy() {
@@ -97,7 +100,9 @@ class MainActivity : ComponentActivity() {
     private fun refreshAndroidState() {
         val power = getSystemService(PowerManager::class.java)
         val mode = Settings.Global.getString(contentResolver, "private_dns_mode")
-        AppState.update { it.copy(batteryExempt = power.isIgnoringBatteryOptimizations(packageName), privateDnsStrict = mode == "hostname") }
+        val location = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
+            getSystemService(LocationManager::class.java)?.isLocationEnabled == true
+        AppState.update { it.copy(batteryExempt = power.isIgnoringBatteryOptimizations(packageName), privateDnsStrict = mode == "hostname", wifiLocationReady = location) }
     }
 
     private fun change(transform: (DnsSettings) -> DnsSettings) {

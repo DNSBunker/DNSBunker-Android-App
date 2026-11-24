@@ -484,6 +484,13 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
 
     SectionCard(stringResource(R.string.section_wifi)) {
         TextRow(stringResource(R.string.wifi_exceptions), stringResource(R.string.wifi_exceptions_body))
+        status.currentWifi?.let { name ->
+            val state = stringResource(if (status.status == ProtectionStatus.WIFI_EXEMPT) R.string.status_exempt else R.string.status_active)
+            Hint(stringResource(R.string.current_wifi, name) + " · " + state, MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(6.dp))
+        }
+        if (!status.wifiLocationReady) { Hint(stringResource(R.string.wifi_needs_location), warning()); Spacer(Modifier.height(6.dp)) }
+        if (status.lockdown) { Hint(stringResource(R.string.wifi_lockdown_paused), warning()); Spacer(Modifier.height(6.dp)) }
         if (settings.exemptSsids.isEmpty()) Hint(stringResource(R.string.no_exceptions))
         NetworkList(settings.exemptSsids, actions.removeExemptWifi)
         OutlinedButton(onClick = { confirmWifi = true }, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {

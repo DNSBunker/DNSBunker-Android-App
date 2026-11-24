@@ -2,9 +2,7 @@
 <resources>
     <string name="app_name">DNSBunker</string>
     <string name="nav_protection">Protection</string>
-    <string name="nav_wifi">Wi-Fi</string>
     <string name="nav_statistics">Statistiques</string>
-    <string name="nav_privacy">Confidentialité</string>
     <string name="footer">Protection DNS · Sans publicité ni suivi</string>
     <string name="vpn_title">Protection DNS via un VPN local</string>
     <string name="vpn_body">Android utilise un VPN local pour envoyer les requêtes DNS système chiffrées à dnsbunker.org. Le reste du trafic passe directement. Les apps utilisant leur propre DNS peuvent contourner cette protection. Tout autre VPN sera déconnecté. Aucune télémétrie n’est envoyée.</string>
@@ -142,4 +140,7 @@
     <string name="private_dns_ok">Aucun fournisseur en conflit n’est défini.</string>
     <string name="close">Fermer</string>
     <string name="protocol">Protocole</string>
+    <string name="current_wifi">Wi-Fi actuel : %1$s</string>
+    <string name="wifi_needs_location">Les exceptions Wi-Fi nécessitent l’autorisation de localisation et la localisation activée. Sinon, Android masque le nom du réseau.</string>
+    <string name="wifi_lockdown_paused">Les exceptions sont suspendues tant que l’option Android « Bloquer les connexions sans VPN » est activée.</string>
 </resources>
