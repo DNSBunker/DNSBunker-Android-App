@@ -202,7 +202,7 @@ class DnsOverHttps(sockets: ProtectedSockets, private val ipIdentity: Boolean = 
         return firstSuccess(urls.map {url->suspend {queryUrl(url,message)}})
     }
     override fun close() {
-        synchronized(lifecycle){closed=true;activeCalls.forEach {it.cancel()};activeCalls.clear()}
+        synchronized(lifecycle){closed=true;for(call in activeCalls)call.cancel();activeCalls.clear()}
         http.dispatcher.cancelAll();http.connectionPool.evictAll();http.dispatcher.executorService.shutdown()
     }
 
@@ -372,5 +372,5 @@ class DnsClient(private val service: VpnService, private val network: Network?, 
     suspend fun probe(): Boolean = try {
         val q = DnsWire.healthQuery();DnsWire.healthyResponse(q,resolve(q,false))
     } catch(c: CancellationException) { throw c } catch (_: Exception) { false }
-    override fun close() { closed=true;scope.cancel();transports.forEach { runCatching { it.close() } };backend?.close() }
+    override fun close() { closed=true;scope.cancel();for(transport in transports)runCatching { transport.close() };backend?.close() }
 }

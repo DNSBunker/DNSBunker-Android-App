@@ -74,7 +74,6 @@ class FeatureAuditTest {
         assertEquals(listOf("acme.corp"), DnsPrivacyPolicy.networkSuffixes("Acme.CORP."))
         assertTrue(DnsPrivacyPolicy.networkSuffixes("com").isEmpty())
         assertTrue(DnsPrivacyPolicy.networkSuffixes("bad_domain.lan a..lan").isEmpty())
-        // A copied SSID must not be able to pull public names onto plaintext router DNS.
         assertTrue(DnsPrivacyPolicy.networkSuffixes("google.com bank.example Home.Example.com.").isEmpty())
         val zones = DnsPrivacyPolicy.localSuffixes("home.arpa, Corp.Example.", listOf("acme.corp"))
         assertTrue(DnsPrivacyPolicy.isLocal("nas.acme.corp", zones))

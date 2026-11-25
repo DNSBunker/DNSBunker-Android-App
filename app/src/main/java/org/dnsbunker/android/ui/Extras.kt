@@ -204,7 +204,7 @@ internal fun BlockedDomainsCard(enabled: Boolean, setEnabled: (Boolean) -> Unit)
         SwitchRow(stringResource(R.string.blocked_list_switch), stringResource(R.string.blocked_list_body), enabled, setEnabled)
         if (enabled) {
             if (entries.isEmpty()) Hint(stringResource(R.string.blocked_list_empty))
-            (if (expanded) entries else entries.take(20)).forEach { entry ->
+            for (entry in if (expanded) entries else entries.take(20)) {
                 Row(
                     Modifier.fillMaxWidth().clickable(role = Role.Button) { selected = entry }.padding(vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,

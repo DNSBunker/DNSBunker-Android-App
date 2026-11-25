@@ -522,7 +522,6 @@ class DnsVpnService : VpnService() {
             }
         }
         val local=WifiPolicy.allowLocal(currentSsid,profile.trustedLocalDnsSsids,profile.allowLocalPlaintext)
-        // Router search domains only matter when names under them may actually go to the router.
         val suffixes=if(profile.splitDnsEnabled && local)
             DnsPrivacyPolicy.networkSuffixes(underlay?.let { knownDomains[it] ?: networkManager.getLinkProperties(it)?.domains })
         else emptyList()

@@ -82,7 +82,7 @@ class QuicBackend(private val service: VpnService, private val network: Network)
     }
     @Synchronized override fun close() {
         closed = true
-        sessions.values.forEach { NativeQuic.nativeClose(it.handle); it.socket.close() }
+        for (session in sessions.values) { NativeQuic.nativeClose(session.handle); session.socket.close() }
         sessions.clear()
     }
 }

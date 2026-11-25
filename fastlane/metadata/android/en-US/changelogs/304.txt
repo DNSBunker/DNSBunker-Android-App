@@ -1,0 +1,4 @@
+- Security fix: domains announced by a Wi-Fi network are only treated as local if they are private names (for example fritz.box or company.corp). A network that copies the name of your trusted Wi-Fi can no longer redirect public sites to unencrypted router DNS
+- Fixed: with split DNS turned off, names under the network's domain no longer fail
+- The network domain hint in Settings now disappears when protection is off or paused
+- Updated libraries (Kotlin 2.4, coroutines 1.11)

@@ -3,8 +3,6 @@ package org.dnsbunker.android.core
 object DnsPrivacyPolicy {
     private val suffixes = setOf("localhost", "local", "lan", "home", "internal", "home.arpa", "onion", "invalid", "test",
         "localdomain", "fritz.box", "speedport.ip")
-    // Zones a router may announce as its search domain. Anything outside them is a public name and is never sent to the router
-    // just because the network says so, since an SSID alone does not prove which network this is.
     private val privateZones = suffixes - setOf("localhost", "onion", "invalid", "test") + setOf("corp", "intranet", "private")
 
     private fun normalize(name: String) = name.trim().trim('.').lowercase(java.util.Locale.ROOT)
@@ -18,7 +16,6 @@ object DnsPrivacyPolicy {
             .filter { name -> privateZones.any { name == it || name.endsWith(".$it") } }
             .distinct().take(4)
 
-    /** Built-in local zones plus the user's comma-separated suffixes and any extra (already normalised) ones. */
     fun localSuffixes(configured: String, extra: List<String> = emptyList()): Set<String> =
         suffixes + configured.split(',').map(::normalize).filter { it.isNotEmpty() } + extra
 

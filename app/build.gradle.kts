@@ -14,8 +14,8 @@ android {
         applicationId = "org.dnsbunker.android"
         minSdk = 21
         targetSdk = 36
-        versionCode = 303
-        versionName = "0.3.3"
+        versionCode = 304
+        versionName = "0.3.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -79,7 +79,7 @@ tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders"
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2026.11.01"))
+    implementation(platform("androidx.compose:compose-bom:2025.10.00"))
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")

@@ -1,0 +1,4 @@
+- Sicherheitsfix: Domains, die ein WLAN verteilt, gelten nur noch als lokal, wenn es private Namen sind (z. B. fritz.box oder firma.corp). Ein Netz, das den Namen deines vertrauenswürdigen WLANs kopiert, kann öffentliche Seiten so nicht mehr auf unverschlüsseltes Router-DNS umleiten
+- Behoben: Bei ausgeschaltetem Split DNS schlagen Namen unter der Domain des Netzes nicht mehr fehl
+- Der Hinweis zur Domain des Netzes in den Einstellungen verschwindet jetzt, wenn der Schutz aus oder pausiert ist
+- Bibliotheken aktualisiert (Kotlin 2.4, Coroutines 1.11)

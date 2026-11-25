@@ -1,16 +1,22 @@
 version: 2
 updates:
-  # Android Gradle plugin, Kotlin, AndroidX/Compose and the Gradle wrapper.
   - package-ecosystem: gradle
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "com.android.application"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "gradle-wrapper"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "androidx.compose:compose-bom"
+      - dependency-name: "com.squareup.okhttp3:okhttp"
+        update-types: [ "version-update:semver-major" ]
     groups:
       gradle-minor-and-patch:
         patterns: [ "*" ]
         update-types: [ "minor", "patch" ]
 
-  # Go modules of the native QUIC and network stack library.
   - package-ecosystem: gomod
     directory: /native/quic
     schedule:
@@ -20,7 +26,6 @@ updates:
         patterns: [ "*" ]
         update-types: [ "minor", "patch" ]
 
-  # Actions used by the workflows, including CodeQL.
   - package-ecosystem: github-actions
     directory: /
     schedule:
