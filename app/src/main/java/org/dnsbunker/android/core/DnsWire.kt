@@ -346,6 +346,37 @@ object DnsWire {
         return result
     }
 
+    fun addressQuery(name: String, type: Int): ByteArray {
+        val id = random.nextInt(65536)
+        val out = java.io.ByteArrayOutputStream()
+        out.write(byteArrayOf((id ushr 8).toByte(), id.toByte(), 1, 0, 0, 1, 0, 0, 0, 0, 0, 0))
+        name.trimEnd('.').split('.').forEach { label ->
+            val bytes = label.toByteArray(Charsets.US_ASCII)
+            require(bytes.size in 1..63)
+            out.write(bytes.size); out.write(bytes)
+        }
+        out.write(byteArrayOf(0, (type ushr 8).toByte(), type.toByte(), 0, 1))
+        return out.toByteArray()
+    }
+
+    fun answerAddresses(response: ByteArray): List<java.net.InetAddress> = runCatching {
+        if (responseCode(response) != 0) return@runCatching emptyList()
+        var at = 12
+        repeat(u16(response, 4)) { at = skipName(response, at) + 4 }
+        val found = mutableListOf<java.net.InetAddress>()
+        repeat(u16(response, 6).coerceAtMost(64)) {
+            at = skipName(response, at)
+            require(at + 10 <= response.size)
+            val type = u16(response, at); val internet = u16(response, at + 2) == 1
+            val length = u16(response, at + 8); val data = at + 10
+            require(data + length <= response.size)
+            if (internet && ((type == 1 && length == 4) || (type == 28 && length == 16)))
+                found += java.net.InetAddress.getByAddress(response.copyOfRange(data, data + length))
+            at = data + length
+        }
+        found
+    }.getOrDefault(emptyList())
+
     fun healthQuery(): ByteArray {
         val id = random.nextInt(65536)
         return byteArrayOf(

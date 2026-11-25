@@ -14,8 +14,8 @@ android {
         applicationId = "org.dnsbunker.android"
         minSdk = 21
         targetSdk = 36
-        versionCode = 300
-        versionName = "0.3.0"
+        versionCode = 301
+        versionName = "0.3.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

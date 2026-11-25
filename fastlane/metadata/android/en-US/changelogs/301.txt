@@ -1,0 +1,9 @@
+- Pause for 5, 15 or 60 minutes from the app or the notification
+- Exclude individual apps
+- Wi-Fi sign-in pages are detected and allowed automatically
+- Optional list of recently blocked domains with false positive report
+- Hints when the server or the network is the problem
+- Guide for Private DNS without the app VPN
+- Server addresses come from encrypted DNS
+- Shows what's new before updates, warns about a wrong clock
+- Fixes for updates in the background and Android 5

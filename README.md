@@ -14,7 +14,11 @@ Encrypted DNS for Android (5.0 and newer) with the filtering resolver of [dnsbun
 - No plaintext fallback: without a working encrypted upstream, queries fail with SERVFAIL
 - Optional comprehensive mode: an on-device gVisor network stack also redirects apps that send DNS to public servers on port 53; there is no remote VPN exit and no TLS interception
 - Live statistics kept only in memory: answered and blocked queries, PRO/TIF filter categories, response times
-- Wi-Fi exceptions, local name protection (`home.arpa`, `.local`, private reverse zones) and optional router DNS for trusted Wi-Fi networks
+- Wi-Fi exceptions, app exceptions, local name protection (`home.arpa`, `.local`, private reverse zones) and optional router DNS for trusted Wi-Fi networks
+- Pause for 5, 15 or 60 minutes from the app or the notification; automatic handling of Wi-Fi sign-in pages (only when encrypted DNS fails on that network, protection returns as soon as the network is unlocked)
+- Optional list of recently blocked domains (memory only) with a link to report false positives on Listseek
+- Status hints that tell apart no internet, an unreachable DNSBunker server and a disrupted DNS service; guide for using DNSBunker through Android's Private DNS without the app VPN
+- Server addresses are learned over encrypted DNS and cached; built-in addresses are only a fallback. Connections by IP address must present a certificate valid for both the IP and `dnsbunker.org`
 - Automatic recovery after network changes, connection monitor, EDNS padding
 - Starts again by itself after app updates and phone restarts; Quick Settings tile; warning when another VPN takes over
 - Updates itself from the GitHub releases after verifying the SHA-256 checksum and the signing certificate (can be turned off)
@@ -22,7 +26,7 @@ Encrypted DNS for Android (5.0 and newer) with the filtering resolver of [dnsbun
 - No ads, no trackers, no telemetry, no account; Android backups disabled
 - English, German, French, Spanish and Russian
 
-Apps that bring their own encrypted DNS (for example some browsers) are not covered by any system DNS protection.
+Apps that bring their own encrypted DNS (for example some browsers) are not covered by any system DNS protection. Excluded apps and paused or sign-in periods use the network's normal DNS.
 
 ## Download
 
@@ -95,7 +99,7 @@ In comprehensive mode the tunnel carries public IPv4/IPv6 routes. A gVisor user-
 - [Privacy policy](https://dnsbunker.org/privacy.html)
 - [Terms of service](https://dnsbunker.org/tos.html)
 
-The app stores only its settings and the Wi-Fi names you add to rules. Statistics live in memory until the app process ends or you reset them.
+The app stores only its settings, the Wi-Fi names and app package names you add to rules, and the last known DNSBunker server addresses. Statistics and the optional list of blocked domains live in memory until the app process ends or you reset them. When encrypted DNS fails, the app may ask the network's DNS for `dnsbunker.org` and fetch `https://dnsbunker.org/app-status.json` to show a status notice.
 
 ## License
 

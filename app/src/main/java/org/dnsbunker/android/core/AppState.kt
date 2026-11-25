@@ -3,7 +3,8 @@ package org.dnsbunker.android.core
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 
-enum class ProtectionStatus { OFF, STARTING, ACTIVE, WIFI_EXEMPT, DEGRADED, ERROR }
+enum class ProtectionStatus { OFF, STARTING, ACTIVE, WIFI_EXEMPT, PAUSED, PORTAL, DEGRADED, ERROR }
+enum class ServerStatus { UNKNOWN, OK, NO_INTERNET, UNREACHABLE, DNS_FAILING }
 data class RuntimeSnapshot(
     val status: ProtectionStatus = ProtectionStatus.OFF,
     val transport: String = "—",
@@ -40,6 +41,12 @@ data class RuntimeSnapshot(
     val backgroundLocation: Boolean = true,
     val updateState: UpdateState = UpdateState.IDLE,
     val updateVersion: String? = null,
+    val updateNotes: String? = null,
+    val clockWrong: Boolean = false,
+    val pausedUntil: Long? = null,
+    val privateDnsHost: String? = null,
+    val serverStatus: ServerStatus = ServerStatus.UNKNOWN,
+    val serverMessage: String? = null,
 )
 object AppState {
     val snapshot = MutableStateFlow(RuntimeSnapshot())
@@ -72,6 +79,7 @@ object AppState {
     }
     fun recordFailure(reason:String) = update { it.copy(failures=it.failures+1,detail=reason) }
     fun resetStatistics() = synchronized(timeLock) {
+        BlockedLog.clear()
         bucket=System.nanoTime()/300_000_000_000L
         update { it.copy(queries=0,blocked=0,blockedPro=0,blockedTif=0,blockedOther=0,failures=0,lastLatencyMillis=null,latencyTotalMillis=0,warmSamples=0,warmTotalMillis=0,lastWarmMillis=null,lastSetupMillis=null,
             recentActivity=List(24){0L},recentBlocked=List(24){0L}) }

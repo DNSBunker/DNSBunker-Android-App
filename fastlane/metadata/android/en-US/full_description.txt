@@ -11,7 +11,10 @@
 <p><b>Made for everyday use</b></p>
 <ul>
 <li>One switch to turn protection on, with a clear status and live statistics: answered and blocked queries, filter categories (PRO and TIF) and response times.</li>
-<li>Wi-Fi exceptions for networks where you want to use the local DNS.</li>
+<li>Wi-Fi exceptions for networks where you want to use the local DNS, and app exceptions for apps that have problems with filtered DNS.</li>
+<li>Pause for 5, 15 or 60 minutes from the app or the notification. Wi-Fi sign-in pages in hotels, trains or cafés are detected and allowed automatically.</li>
+<li>Optional list of recently blocked domains with a link to report false positives.</li>
+<li>Clear hints when the DNSBunker server or the network is the problem, and a guide to use DNSBunker through Android's Private DNS without the app VPN.</li>
 <li>Local names such as nas.home.arpa are never sent to the public resolver; router DNS can be allowed for trusted Wi-Fi networks.</li>
 <li>Automatic recovery after network changes, restart after updates and phone restarts, Quick Settings tile, dark mode and five languages (English, German, French, Spanish, Russian).</li>
 <li>Built-in updates from the official GitHub releases, verified by checksum and signature.</li>
@@ -21,7 +24,7 @@
 <p><b>Privacy</b></p>
 <ul>
 <li>No ads, no trackers, no telemetry, no account.</li>
-<li>Statistics stay in memory on your device only. No domain history is stored.</li>
+<li>Statistics and the optional list of blocked domains stay in memory on your device only. No domain history is stored.</li>
 <li>Android backups are disabled for the app.</li>
 </ul>
 
@@ -34,6 +37,7 @@
 <li>Run at startup: turns protection back on after a phone restart if it was on before.</li>
 <li>Install apps: only used to install verified updates of DNSBunker itself.</li>
 <li>Location all the time: optional, only so Wi-Fi exceptions apply right after a restart.</li>
+<li>Visible apps: the app list for app exceptions shows only apps with a launcher icon; it is never sent anywhere.</li>
 </ul>
 
 <p>Apps that use their own encrypted DNS (for example some browsers) are not affected by any system DNS protection. Privacy policy: https://dnsbunker.org/privacy.html</p>

@@ -47,6 +47,28 @@ var next atomic.Int64
 
 func main() {}
 
+const serviceHost = "dnsbunker.org"
+
+func verifyService(state tls.ConnectionState) error {
+	if len(state.PeerCertificates) == 0 {
+		return errors.New("certificate missing")
+	}
+	return state.PeerCertificates[0].VerifyHostname(serviceHost)
+}
+
+func publicAddress(ip net.IP) bool {
+	if ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return false
+	}
+	for _, block := range []string{"100.64.0.0/10", "198.18.0.0/15", "192.0.0.0/24", "192.0.2.0/24", "2001:db8::/32", "64:ff9b::/96"} {
+		_, network, _ := net.ParseCIDR(block)
+		if network.Contains(ip) {
+			return false
+		}
+	}
+	return true
+}
+
 func config() *quic.Config {
 	return &quic.Config{HandshakeIdleTimeout: 2 * time.Second, MaxIdleTimeout: 45 * time.Second, MaxIncomingStreams: -1, MaxIncomingUniStreams: 16, InitialPacketSize: 1200, DisablePathMTUDiscovery: true, InitialStreamReceiveWindow: 65536, MaxStreamReceiveWindow: 131072, InitialConnectionReceiveWindow: 524288, MaxConnectionReceiveWindow: 2097152}
 }
@@ -60,10 +82,10 @@ func dnsbunker_create(fd C.int, ipText *C.char, peerText *C.char, rootsText *C.c
 	defer file.Close()
 	ip := net.ParseIP(C.GoString(ipText))
 	peer := C.GoString(peerText)
-	if ip == nil || !(ip.Equal(net.ParseIP("185.250.250.61")) || ip.Equal(net.ParseIP("2a0a:51c1:a:ea::"))) {
+	if !publicAddress(ip) {
 		return 0
 	}
-	if peer != "dnsbunker.org" && peer != ip.String() {
+	if peer != serviceHost && peer != ip.String() {
 		return 0
 	}
 	roots := x509.NewCertPool()
@@ -75,7 +97,7 @@ func dnsbunker_create(fd C.int, ipText *C.char, peerText *C.char, rootsText *C.c
 		return 0
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &client{udp: udp, address: ip, ctx: ctx, cancel: cancel, tls: &tls.Config{RootCAs: roots, ServerName: peer, MinVersion: tls.VersionTLS13}}
+	c := &client{udp: udp, address: ip, ctx: ctx, cancel: cancel, tls: &tls.Config{RootCAs: roots, ServerName: peer, MinVersion: tls.VersionTLS13, VerifyConnection: verifyService}}
 	c.transport = &quic.Transport{Conn: udp}
 	c.h3 = &http3.Transport{TLSClientConfig: c.tls.Clone(), QUICConfig: config(), DisableCompression: true, MaxResponseHeaderBytes: 16384,
 		Dial: func(ctx context.Context, _ string, t *tls.Config, q *quic.Config) (*quic.Conn, error) {
@@ -184,6 +206,10 @@ func dnsbunker_query(id C.longlong, kind C.int, data unsafe.Pointer, length C.in
 	q := C.GoBytes(data, length)
 	answer, err := c.query(ctx, int(kind), q)
 	if err != nil {
+		var invalid x509.CertificateInvalidError
+		if errors.As(err, &invalid) && invalid.Reason == x509.Expired {
+			return -5
+		}
 		var cert *tls.CertificateVerificationError
 		if errors.As(err, &cert) || strings.Contains(err.Error(), "certificate") {
 			return -3

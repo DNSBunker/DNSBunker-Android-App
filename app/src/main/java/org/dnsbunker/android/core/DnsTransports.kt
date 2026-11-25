@@ -22,7 +22,74 @@ import javax.net.ssl.*
 
 object DnsEndpoint {
     const val HOST = "dnsbunker.org"
-    val addresses = listOf(InetAddress.getByName("185.250.250.61"), InetAddress.getByName("2a0a:51c1:a:ea::"))
+    val fallback: List<InetAddress> = listOf(InetAddress.getByName("185.250.250.61"), InetAddress.getByName("2a0a:51c1:a:ea::"))
+    @Volatile var addresses: List<InetAddress> = fallback
+        private set
+    @Volatile private var prefs: android.content.SharedPreferences? = null
+    @Volatile private var lastBootstrap = 0L
+    @Volatile var lastRefresh = 0L
+        private set
+
+    fun init(context: android.content.Context) {
+        if (prefs != null) return
+        val store = context.applicationContext.getSharedPreferences("dnsbunker_endpoint", android.content.Context.MODE_PRIVATE)
+        prefs = store
+        lastRefresh = store.getLong("refreshed", 0)
+        val saved = store.getString("addresses", null)?.split(',')?.mapNotNull { literal(it) }.orEmpty()
+        if (saved.isNotEmpty()) addresses = select(saved + fallback)
+    }
+
+    fun literal(text: String): InetAddress? {
+        val value = text.trim()
+        if (value.isEmpty() || !value.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' || it == '.' || it == ':' }) return null
+        return runCatching { InetAddress.getByName(value) }.getOrNull()?.takeIf(::usable)
+    }
+
+    fun usable(address: InetAddress): Boolean {
+        if (address.isAnyLocalAddress || address.isLoopbackAddress || address.isLinkLocalAddress ||
+            address.isSiteLocalAddress || address.isMulticastAddress) return false
+        val bytes = address.address
+        val a = bytes[0].toInt() and 255
+        val b = bytes[1].toInt() and 255
+        return if (bytes.size == 4) {
+            !(a == 0 || a == 10 || a == 127 || a >= 224 || (a == 100 && b in 64..127) || (a == 169 && b == 254) ||
+                (a == 172 && b in 16..31) || (a == 192 && b == 168) || (a == 198 && b in 18..19) ||
+                (a == 192 && b == 0 && (bytes[2].toInt() and 255) in setOf(0, 2)))
+        } else {
+            a and 0xe0 == 0x20 && !(a == 0x20 && b == 0x01 && (bytes[2].toInt() and 255) == 0x0d && (bytes[3].toInt() and 255) == 0xb8)
+        }
+    }
+
+    fun select(candidates: List<InetAddress>): List<InetAddress> {
+        val unique = candidates.filter(::usable).distinctBy { it.hostAddress }
+        val v4 = unique.filterIsInstance<Inet4Address>().take(2)
+        val v6 = unique.filterIsInstance<Inet6Address>().take(2)
+        return buildList { for (i in 0 until 2) { v4.getOrNull(i)?.let(::add); v6.getOrNull(i)?.let(::add) } }
+    }
+
+    fun trusted(found: List<InetAddress>): Boolean {
+        val fresh = found.filter(::usable)
+        if (fresh.isEmpty()) return false
+        val next = select(fresh + fallback.filter { f -> fresh.none { it.javaClass == f.javaClass } })
+        lastRefresh = System.currentTimeMillis()
+        prefs?.edit()?.putString("addresses", fresh.joinToString(",") { it.hostAddress ?: "" })?.putLong("refreshed", lastRefresh)?.apply()
+        if (next.map { it.hostAddress } == addresses.map { it.hostAddress }) return false
+        addresses = next
+        return true
+    }
+
+    fun bootstrap(network: Network): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - lastBootstrap < 10 * 60_000L) return false
+        lastBootstrap = now
+        val found = runCatching { network.getAllByName(HOST).toList() }.getOrDefault(emptyList()).filter(::usable)
+        if (found.isEmpty()) return false
+        val next = select(found + addresses + fallback)
+        if (next.map { it.hostAddress } == addresses.map { it.hostAddress }) return false
+        addresses = next
+        return true
+    }
+
     fun url(address: InetAddress) = "https://" + if (address is Inet6Address) "[${address.hostAddress}]/dns-query" else "${address.hostAddress}/dns-query"
 }
 
@@ -92,6 +159,7 @@ class DnsOverHttps(sockets: ProtectedSockets, private val ipIdentity: Boolean = 
         .connectionSpecs(listOf(ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS).tlsVersions(*tlsVersions()).build()))
         .apply { if (Trust.needsBundledRoots) sslSocketFactory(Trust.socketFactory, Trust.trustManager) }
         .proxy(Proxy.NO_PROXY)
+        .hostnameVerifier { host, session -> Trust.verifyPeer(host, session) }
         .dns(object : Dns {
             override fun lookup(hostname: String): List<InetAddress> {
                 if (hostname != DnsEndpoint.HOST) throw UnknownHostException("Unapproved bootstrap")
@@ -173,7 +241,7 @@ class DnsOverTls(private val sockets: ProtectedSockets, private val ipIdentity: 
                         runCatching { tls.javaClass.getMethod("setHostname", String::class.java).invoke(tls, peer) }
                     }
                     tls.startHandshake()
-                    if (Build.VERSION.SDK_INT < 24 && !HttpsURLConnection.getDefaultHostnameVerifier().verify(peer, tls.session))
+                    if (!Trust.verifyPeer(peer, tls.session))
                         throw SSLPeerUnverifiedException("DoT certificate does not match $peer")
                     born=System.nanoTime();setupMillis=(born-start)/1_000_000;return tls
                 } catch (e: Exception) { tls.close();throw e }
@@ -263,6 +331,7 @@ class DnsClient(private val service: VpnService, private val network: Network?, 
         val outbound = if(settings.ednsPaddingEnabled) DnsWire.pad(originalMessage) else originalMessage
         val ordered = policy.order(transportNames())
         var last: Exception? = null
+        var clockError = false
         for (name in ordered) {
             if(closed)throw IOException("DNS client closed")
             val remaining = budgetMillis - (System.nanoTime()-start)/1_000_000
@@ -274,17 +343,29 @@ class DnsClient(private val service: VpnService, private val network: Network?, 
                 if (closed) throw IOException("Network changed")
                 val ms = (System.nanoTime()-start)/1_000_000
                 policy.success(name,ms);lastTransport = name
+                if (AppState.snapshot.value.clockWrong) AppState.update { it.copy(clockWrong = false) }
                 if(recordMetrics) {
                     AppState.update { it.copy(transport=name) }
                     val category=DnsWire.blockCategory(answer)
                     AppState.recordQuery(ms,category!=DnsWire.BlockCategory.NONE,category,exchange.timing)
+                    if (BlockedLog.enabled && category != DnsWire.BlockCategory.NONE)
+                        BlockedLog.record(DnsWire.firstQuestionName(originalMessage), category)
                 }
                 return answer
             } catch(c: CancellationException) { throw c }
-            catch(e: Exception) { last = e;policy.failure(name) }
+            catch(e: Exception) { last = e;policy.failure(name);if (ClockCheck.isTimeError(e)) clockError = true }
         }
+        if (clockError && android.provider.Settings.Global.getInt(service.contentResolver, android.provider.Settings.Global.AUTO_TIME, 1) == 0)
+            AppState.update { it.copy(clockWrong = true) }
         if(recordMetrics) AppState.recordFailure(service.getString(R.string.health_failed))
         throw IOException("No verified encrypted transport",last)
+    }
+    suspend fun refreshEndpoints(): Boolean {
+        val found = listOf(1, 28).flatMap { type ->
+            try { DnsWire.answerAddresses(resolve(DnsWire.addressQuery(DnsEndpoint.HOST, type), false)) }
+            catch (c: CancellationException) { throw c } catch (_: Exception) { emptyList() }
+        }
+        return DnsEndpoint.trusted(found)
     }
     suspend fun probe(): Boolean = try {
         val q = DnsWire.healthQuery();DnsWire.healthyResponse(q,resolve(q,false))

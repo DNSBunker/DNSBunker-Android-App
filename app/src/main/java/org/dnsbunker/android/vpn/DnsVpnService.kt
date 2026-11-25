@@ -61,6 +61,11 @@ import org.dnsbunker.android.core.TunHealthProbe
 import org.dnsbunker.android.core.NativeFullTunnel
 import org.dnsbunker.android.core.NativeQuic
 import org.dnsbunker.android.core.RoutePlan
+import org.dnsbunker.android.core.BlockedLog
+import org.dnsbunker.android.core.DnsEndpoint
+import org.dnsbunker.android.core.DnsSettings
+import org.dnsbunker.android.core.ServerCheck
+import org.dnsbunker.android.core.ServerStatus
 
 class DnsVpnService : VpnService() {
     companion object {
@@ -68,6 +73,9 @@ class DnsVpnService : VpnService() {
         const val ACTION_STOP = "org.dnsbunker.android.STOP"
         const val ACTION_DIAGNOSTICS = "org.dnsbunker.android.DIAGNOSTICS"
         const val ACTION_REFRESH = "org.dnsbunker.android.REFRESH"
+        const val ACTION_PAUSE = "org.dnsbunker.android.PAUSE"
+        const val ACTION_RESUME = "org.dnsbunker.android.RESUME"
+        const val EXTRA_MINUTES = "org.dnsbunker.android.MINUTES"
         private const val CHANNEL_ID = "dnsbunker_vpn"
         private const val NOTIFICATION_ID = 1001
         private const val WARNING_CHANNEL_ID = "dnsbunker_warnings"
@@ -89,6 +97,12 @@ class DnsVpnService : VpnService() {
     @Volatile private var fullStack:NativeFullTunnel.Session?=null
     private var tunnelIntercepts=false
     private var tunnelUnderlay:Network?=null
+    private var tunnelExcluded:Set<String> = emptySet()
+    private var pauseJob: Job? = null
+    @Volatile private var portalNetwork: Network? = null
+    private var portalJob: Job? = null
+    private var diagnosisJob: Job? = null
+    private var lastDiagnosis = 0L
     private val networkEpoch = AtomicLong(0)
     private val capabilities = ConcurrentHashMap<Network, NetworkCapabilities>()
     private val networkManager by lazy { getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager }
@@ -184,7 +198,7 @@ class DnsVpnService : VpnService() {
         val release = try { Updater.check() } catch (c: CancellationException) { throw c } catch (_: Exception) { return }
         settings.setLastUpdateCheck(System.currentTimeMillis())
         if (release == null || settings.notifiedUpdate() == release.version) return
-        AppState.update { it.copy(updateState = UpdateState.AVAILABLE, updateVersion = release.version) }
+        AppState.update { it.copy(updateState = UpdateState.AVAILABLE, updateVersion = release.version, updateNotes = release.notes) }
         settings.setNotifiedUpdate(release.version)
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
@@ -235,6 +249,7 @@ class DnsVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
+        DnsEndpoint.init(this)
         createChannel()
         enterForeground(getString(R.string.preparing), refresh = false)
         scope.launch { AppState.snapshot.map { it.status }.distinctUntilChanged().collect { TileRefresher.refresh(this@DnsVpnService) } }
@@ -252,7 +267,7 @@ class DnsVpnService : VpnService() {
         val action = intent?.action
         if (action != ACTION_STOP) {
             enterForeground(notificationText ?: getString(R.string.preparing))
-            if (action == ACTION_REFRESH || action == ACTION_DIAGNOSTICS) {
+            if (action == ACTION_REFRESH || action == ACTION_DIAGNOSTICS || action == ACTION_PAUSE || action == ACTION_RESUME) {
                 if (stopping) {
                     ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
                     stopSelf(startId)
@@ -268,6 +283,12 @@ class DnsVpnService : VpnService() {
             ACTION_STOP -> {
                 stopping = true
                 settings.setProtectionWanted(false)
+                settings.setPausedUntil(0)
+                PauseAlarm.cancel(this)
+                pauseJob?.cancel()
+                diagnosisJob?.cancel()
+                portalJob?.cancel()
+                portalNetwork = null
                 clearWarning()
                 notificationText = null
                 networkEpoch.incrementAndGet()
@@ -280,6 +301,20 @@ class DnsVpnService : VpnService() {
                 ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
+            }
+            ACTION_PAUSE -> {
+                val minutes = intent?.getIntExtra(EXTRA_MINUTES, 15)?.coerceIn(1, 240) ?: 15
+                if (!lockdownEnabled) {
+                    val until = System.currentTimeMillis() + minutes * 60_000L
+                    settings.setPausedUntil(until)
+                    PauseAlarm.schedule(this, until)
+                }
+                scope.launch { reconcile() }
+            }
+            ACTION_RESUME -> {
+                settings.setPausedUntil(0)
+                PauseAlarm.cancel(this)
+                scope.launch { reconcile() }
             }
             ACTION_DIAGNOSTICS -> scope.launch {
                 reconcile()
@@ -303,7 +338,23 @@ class DnsVpnService : VpnService() {
 
     private fun meaningfulChange(old: NetworkCapabilities, next: NetworkCapabilities): Boolean =
         listOf(NetworkCapabilities.NET_CAPABILITY_INTERNET,NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED,
-            NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL).any { old.hasCapability(it) != next.hasCapability(it) }
+            NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL).any { old.hasCapability(it) != next.hasCapability(it) } ||
+            (Build.VERSION.SDK_INT >= 23 && validated(old) != validated(next))
+
+    private fun captive(caps: NetworkCapabilities?): Boolean = Build.VERSION.SDK_INT >= 23 && caps != null &&
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) && !validated(caps)
+
+    private fun watchPortal(network: Network, profile: DnsSettings) {
+        if (portalJob?.isActive == true) return
+        portalJob = scope.launch {
+            while (isActive && portalNetwork == network) {
+                delay(20_000)
+                val reachable = try { DnsClient(this@DnsVpnService, network, profile).use { it.probe() } }
+                    catch (c: CancellationException) { throw c } catch (_: Exception) { false }
+                if (reachable && portalNetwork == network) { portalNetwork = null; reconcile(); break }
+            }
+        }
+    }
 
     private fun rememberSsid(network: Network, caps: NetworkCapabilities): String? {
         if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return null
@@ -313,13 +364,17 @@ class DnsVpnService : VpnService() {
         return knownSsid[network]
     }
 
+    private fun validated(caps: NetworkCapabilities): Boolean =
+        if (Build.VERSION.SDK_INT >= 23) caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        else caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+
     @Suppress("DEPRECATION")
     private fun availableUnderlay(): Network? {
         val networks=networkManager.allNetworks.toList()
         val candidates=networks.mapNotNull { network ->
             val c=capabilities[network] ?: networkManager.getNetworkCapabilities(network) ?: return@mapNotNull null
             UnderlayCandidate(Compat.id(network),c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
-                c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+                validated(c),
                 c.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL),
                 c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
                 c.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED),
@@ -329,12 +384,16 @@ class DnsVpnService : VpnService() {
         return networks.firstOrNull { Compat.id(it)==chosen }
     }
     private val vpnCallback=object: ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            if (Build.VERSION.SDK_INT >= 23) return
+            scope.launch { delay(500); networkManager.getNetworkCapabilities(network)?.let { onCapabilitiesChanged(network, it) } }
+        }
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
             if(android.os.Build.VERSION.SDK_INT>=30) {
                 if(caps.ownerUid!=android.os.Process.myUid())return
             } else if(tunnel==null||(Build.VERSION.SDK_INT>=23&&networkManager.activeNetwork!=network)||VpnService.prepare(this@DnsVpnService)!=null)return
             vpnNetwork=network
-            AppState.update { it.copy(androidValidated=caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) }
+            AppState.update { it.copy(androidValidated=Build.VERSION.SDK_INT < 23 || validated(caps)) }
         }
         override fun onLost(network: Network) { if(vpnNetwork==network) {vpnNetwork=null;AppState.update {it.copy(androidValidated=false)}} }
     }
@@ -348,7 +407,7 @@ class DnsVpnService : VpnService() {
         return rememberSsid(network, caps)
     }
 
-    private suspend fun reconcile(renewResolver: Boolean = false) = reconcileMutex.withLock {
+    private suspend fun reconcile(renewResolver: Boolean = false): Unit = reconcileMutex.withLock {
         if (stopping) return@withLock
         val epoch = networkEpoch.get()
         val underlay = availableUnderlay()
@@ -357,8 +416,42 @@ class DnsVpnService : VpnService() {
         val caps=underlay?.let { capabilities[it] ?: networkManager.getNetworkCapabilities(it) }
         AppState.update { it.copy(underlayAvailable=underlay!=null,currentWifi=currentSsid,lockdown=lockdownEnabled,
             captivePortal=caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)==true,
-            underlayValidated=caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)==true) }
+            underlayValidated=caps?.let { validated(it) }==true) }
         activeNetwork = underlay
+        BlockedLog.enabled = profile.rememberBlocked
+        val pausedUntil = settings.pausedUntil()
+        val paused = !lockdownEnabled && pausedUntil > System.currentTimeMillis()
+        if (pausedUntil != 0L && !paused) { settings.setPausedUntil(0); PauseAlarm.cancel(this) }
+        if (paused) {
+            closeTunnel()
+            resolver = null
+            val time = android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(pausedUntil))
+            AppState.update { it.copy(status = ProtectionStatus.PAUSED, transport = "—", pausedUntil = pausedUntil,
+                serverStatus = ServerStatus.UNKNOWN, serverMessage = null, detail = getString(R.string.paused_detail, time)) }
+            refreshNotification(getString(R.string.paused_notification, time))
+            pauseJob?.cancel()
+            pauseJob = scope.launch {
+                while (isActive && System.currentTimeMillis() < pausedUntil) delay((pausedUntil - System.currentTimeMillis()).coerceIn(1_000L, 30_000L))
+                reconcile()
+            }
+            return@withLock
+        }
+        pauseJob?.cancel()
+        if (AppState.snapshot.value.pausedUntil != null) AppState.update { it.copy(pausedUntil = null) }
+        val portal = portalNetwork
+        if (portal != null && (portal != underlay || !captive(caps) || lockdownEnabled || !profile.captiveAuto)) {
+            portalNetwork = null
+            portalJob?.cancel()
+        }
+        if (underlay != null && portalNetwork == underlay) {
+            closeTunnel()
+            resolver = null
+            AppState.update { it.copy(status = ProtectionStatus.PORTAL, transport = "—", serverStatus = ServerStatus.UNKNOWN,
+                serverMessage = null, detail = getString(R.string.portal_detail)) }
+            refreshNotification(getString(R.string.portal_notification))
+            watchPortal(underlay, profile)
+            return@withLock
+        }
         val exempt = WifiPolicy.exempt(currentSsid, profile.exemptSsids, lockdownEnabled)
         if (exempt) {
             closeTunnel()
@@ -372,7 +465,7 @@ class DnsVpnService : VpnService() {
             AppState.update {it.copy(status=ProtectionStatus.ERROR,detail=getString(R.string.strict_unavailable))}
             return@withLock
         }
-        if (tunnel == null || tunnelNeedsRecovery || tunnelIntercepts!=intercept || (intercept&&tunnelUnderlay!=underlay)) {
+        if (tunnel == null || tunnelNeedsRecovery || tunnelIntercepts!=intercept || (intercept&&tunnelUnderlay!=underlay) || tunnelExcluded!=profile.excludedApps) {
             AppState.update { it.copy(status = ProtectionStatus.STARTING, detail = getString(R.string.tunnel_starting)) }
             try {
                 val builder = Builder()
@@ -386,6 +479,9 @@ class DnsVpnService : VpnService() {
                     .addRoute(DNS_V6, 128)
                     .setBlocking(true)
                 if (Build.VERSION.SDK_INT >= 22) builder.setUnderlyingNetworks(underlay?.let { arrayOf(it) } ?: emptyArray())
+                profile.excludedApps.filter { it != packageName }.forEach { app ->
+                    try { builder.addDisallowedApplication(app) } catch (_: PackageManager.NameNotFoundException) { }
+                }
                 if (Build.VERSION.SDK_INT >= 29) builder.setMetered(caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)!=true)
                 if(intercept) {
                     if(lockdownEnabled) {builder.addRoute("0.0.0.0",0);builder.addRoute("::",0)}
@@ -396,7 +492,7 @@ class DnsVpnService : VpnService() {
                 val oldReader = readJob
                 tunnel = newTunnel
                 tunnelNeedsRecovery = false
-                tunnelIntercepts=intercept;tunnelUnderlay=underlay
+                tunnelIntercepts=intercept;tunnelUnderlay=underlay;tunnelExcluded=profile.excludedApps
                 AppState.update {it.copy(interceptPublicDns=intercept)}
                 readJob = scope.launch {
                     try{readPackets(newTunnel,intercept,underlay)}
@@ -415,7 +511,7 @@ class DnsVpnService : VpnService() {
             }
         }
         val local=WifiPolicy.allowLocal(currentSsid,profile.trustedLocalDnsSsids,profile.allowLocalPlaintext)
-        val changed=renewResolver || resolver==null || resolverNetwork!=underlay || resolverProfile!=profile || resolverLocal!=local
+        val changed=renewResolver || resolver==null || resolverNetwork!=underlay || resolverProfile?.resolverKey()!=profile.resolverKey() || resolverLocal!=local
         if(changed) {
             healthJob?.cancel()
             resolver=underlay?.let { DnsClient(this,it,profile,allowLocalDns=local) }
@@ -537,11 +633,45 @@ class DnsVpnService : VpnService() {
         }
     }
 
+    private fun DnsSettings.resolverKey() = copy(excludedApps = emptySet(), rememberBlocked = false, updateCheck = true, captiveAuto = true)
+
+    private fun diagnoseFailure() {
+        val underlay = activeNetwork ?: return
+        val now = System.currentTimeMillis()
+        if (diagnosisJob?.isActive == true || now - lastDiagnosis < 60_000L) return
+        lastDiagnosis = now
+        val epoch = networkEpoch.get()
+        diagnosisJob = scope.launch {
+            val caps = capabilities[underlay] ?: networkManager.getNetworkCapabilities(underlay)
+            val online = caps?.let { validated(it) } == true
+            if (online && DnsEndpoint.bootstrap(underlay)) { reconcile(renewResolver = true); return@launch }
+            val (state, message) = ServerCheck.run(this@DnsVpnService, underlay, online)
+            if (!stopping && epoch == networkEpoch.get() && AppState.snapshot.value.status == ProtectionStatus.DEGRADED)
+                AppState.update { it.copy(serverStatus = state, serverMessage = message) }
+        }
+    }
+
+    private fun refreshEndpoints(client: DnsClient) {
+        if (System.currentTimeMillis() - DnsEndpoint.lastRefresh < 12 * 3_600_000L) return
+        scope.launch { if (client.refreshEndpoints() && client === resolver) reconcile(renewResolver = true) }
+    }
+
     private fun reportHealth(healthy: Boolean) {
         if (stopping) return
         if (healthy) {
             recoveryAttempt = 0
             if (Build.VERSION.SDK_INT >= 23) vpnNetwork?.let { networkManager.reportNetworkConnectivity(it,true) }
+            AppState.update { it.copy(serverStatus = ServerStatus.OK, serverMessage = null) }
+            resolver?.let(::refreshEndpoints)
+        } else {
+            val underlay = activeNetwork
+            val caps = underlay?.let { capabilities[it] ?: networkManager.getNetworkCapabilities(it) }
+            if (underlay != null && captive(caps) && !lockdownEnabled && settings.current().captiveAuto && portalNetwork != underlay) {
+                portalNetwork = underlay
+                scope.launch { reconcile() }
+                return
+            }
+            diagnoseFailure()
         }
         AppState.update { it.copy(status = if (healthy) ProtectionStatus.ACTIVE else ProtectionStatus.DEGRADED,
             transport = if (healthy) resolver?.lastTransport ?: "—" else "—",
@@ -559,7 +689,8 @@ class DnsVpnService : VpnService() {
     private suspend fun watchConnection() {
         var consecutiveFailures = 0
         while (scope.isActive) {
-            delay(if(AppState.snapshot.value.status==ProtectionStatus.ACTIVE) 60_000 else 10_000)
+            val interactive = (getSystemService(POWER_SERVICE) as android.os.PowerManager).isInteractive
+            delay(when { AppState.snapshot.value.status != ProtectionStatus.ACTIVE -> 10_000L; interactive -> 60_000L; else -> 300_000L })
             if (!settings.current().watchdogEnabled || tunnel == null) continue
             val client = resolver
             client?.startBackgroundProbes()
@@ -599,19 +730,35 @@ class DnsVpnService : VpnService() {
         manager.notify(NOTIFICATION_ID, notification(message))
     }
 
+    private fun serviceIntent(code: Int, action: String, minutes: Int = 0): PendingIntent {
+        val intent = Intent(this, DnsVpnService::class.java).setAction(action).putExtra(EXTRA_MINUTES, minutes)
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        return if (Build.VERSION.SDK_INT >= 26) PendingIntent.getForegroundService(this, code, intent, flags)
+            else PendingIntent.getService(this, code, intent, flags)
+    }
+
     private fun notification(message: String): Notification {
         val activity = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle("DNSBunker")
             .setContentText(message)
             .setContentIntent(activity)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .build()
+        when (AppState.snapshot.value.status) {
+            ProtectionStatus.PAUSED -> builder.addAction(0, getString(R.string.resume_short), serviceIntent(20, ACTION_RESUME))
+            ProtectionStatus.ACTIVE, ProtectionStatus.DEGRADED -> if (!lockdownEnabled) {
+                builder.addAction(0, getString(R.string.notif_pause_5), serviceIntent(21, ACTION_PAUSE, 5))
+                builder.addAction(0, getString(R.string.notif_pause_15), serviceIntent(22, ACTION_PAUSE, 15))
+                builder.addAction(0, getString(R.string.notif_pause_60), serviceIntent(23, ACTION_PAUSE, 60))
+            }
+            else -> {}
+        }
+        return builder.build()
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -623,6 +770,9 @@ class DnsVpnService : VpnService() {
             ProtectionStatus.DEGRADED -> getString(if (activeNetwork == null) R.string.offline_detail else R.string.health_failed)
             ProtectionStatus.ERROR -> getString(R.string.vpn_error_detail)
             ProtectionStatus.WIFI_EXEMPT -> getString(R.string.wifi_exempt_detail, ssid(activeNetwork).orEmpty())
+            ProtectionStatus.PORTAL -> getString(R.string.portal_detail)
+            ProtectionStatus.PAUSED -> getString(R.string.paused_detail,
+                android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(settings.pausedUntil())))
             ProtectionStatus.OFF -> getString(R.string.off_detail)
         }
         AppState.update { it.copy(detail = detail) }
@@ -633,6 +783,8 @@ class DnsVpnService : VpnService() {
 
     override fun onRevoke() {
         settings.setProtectionWanted(false)
+        settings.setPausedUntil(0)
+        PauseAlarm.cancel(this)
         stopping=true
         networkEpoch.incrementAndGet()
         resolver=null

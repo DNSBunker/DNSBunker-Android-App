@@ -14,6 +14,9 @@ data class DnsSettings(
     val fallbackDoT: Boolean = true,
     val interceptPublicDns: Boolean = false,
     val updateCheck: Boolean = true,
+    val excludedApps: Set<String> = emptySet(),
+    val rememberBlocked: Boolean = false,
+    val captiveAuto: Boolean = true,
 )
 
 class UserSettings(context: Context) {
@@ -27,6 +30,9 @@ class UserSettings(context: Context) {
     fun setProtectionWanted(wanted: Boolean) {
         prefs.edit().putBoolean("protection_wanted", wanted).apply()
     }
+
+    fun pausedUntil(): Long = prefs.getLong("paused_until", 0)
+    fun setPausedUntil(time: Long) { prefs.edit().putLong("paused_until", time).apply() }
 
     fun lastUpdateCheck(): Long = prefs.getLong("update_last_check", 0)
     fun setLastUpdateCheck(time: Long) { prefs.edit().putLong("update_last_check", time).apply() }
@@ -44,6 +50,9 @@ class UserSettings(context: Context) {
         fallbackDoT = prefs.getBoolean("dot_fallback", true),
         interceptPublicDns = prefs.getBoolean("intercept_public_dns",false),
         updateCheck = prefs.getBoolean("update_check", true),
+        excludedApps = prefs.getStringSet("excluded_apps", emptySet())?.toSet() ?: emptySet(),
+        rememberBlocked = prefs.getBoolean("remember_blocked", false),
+        captiveAuto = prefs.getBoolean("captive_auto", true),
     )
 
     fun update(transform: (DnsSettings) -> DnsSettings) {
@@ -59,6 +68,9 @@ class UserSettings(context: Context) {
             .putBoolean("dot_fallback", next.fallbackDoT)
             .putBoolean("intercept_public_dns",next.interceptPublicDns)
             .putBoolean("update_check", next.updateCheck)
+            .putStringSet("excluded_apps", next.excludedApps)
+            .putBoolean("remember_blocked", next.rememberBlocked)
+            .putBoolean("captive_auto", next.captiveAuto)
             .remove("domain_history")
             .apply()
         value.value = next

@@ -1,5 +1,8 @@
 package org.dnsbunker.android.core
 
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -9,8 +12,15 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.pm.PackageInfoCompat
+import org.dnsbunker.android.MainActivity
+import org.dnsbunker.android.R
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -23,7 +33,7 @@ import java.util.concurrent.TimeUnit
 
 enum class UpdateState { IDLE, CHECKING, LATEST, AVAILABLE, DOWNLOADING, INSTALLING, NEEDS_PERMISSION, FAILED }
 
-data class Release(val version: String, val apkName: String, val apkUrl: String, val sumsUrl: String)
+data class Release(val version: String, val apkName: String, val apkUrl: String, val sumsUrl: String, val notes: String)
 
 object Updater {
     private const val LATEST = "https://api.github.com/repos/DNSBunker/DNSBunker-Android-App/releases/latest"
@@ -37,6 +47,52 @@ object Updater {
 
     @Volatile var available: Release? = null
         private set
+    @Volatile var pendingConfirmation: Intent? = null
+    @Volatile var foreground = false
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private const val CONFIRM_ID = 1004
+
+    fun requestConfirmation(context: Context, confirm: Intent) {
+        if (foreground || Build.VERSION.SDK_INT < 29) {
+            try { context.startActivity(confirm); return } catch (_: Exception) { }
+        }
+        pendingConfirmation = confirm
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        if (Build.VERSION.SDK_INT >= 26) {
+            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(
+                NotificationChannel("dnsbunker_updates", context.getString(R.string.update_channel), NotificationManager.IMPORTANCE_DEFAULT))
+        }
+        val open = PendingIntent.getActivity(context, 3, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val text = context.getString(R.string.update_confirm_notification)
+        val note = NotificationCompat.Builder(context, "dnsbunker_updates").setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("DNSBunker").setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(open).setAutoCancel(true).build()
+        try { NotificationManagerCompat.from(context).notify(CONFIRM_ID, note) } catch (_: SecurityException) { }
+    }
+
+    fun resumeConfirmation(context: Context): Intent? {
+        val confirm = pendingConfirmation ?: return null
+        pendingConfirmation = null
+        NotificationManagerCompat.from(context).cancel(CONFIRM_ID)
+        return confirm
+    }
+
+    fun trustedConfirmation(context: Context, confirm: Intent): Intent? {
+        if (confirm.action?.startsWith("android.content.pm.action.CONFIRM_") != true) return null
+        val target = confirm.component?.packageName ?: confirm.`package`
+        if (target == null || target == context.packageName) return null
+        val grants = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+        return Intent(confirm).setFlags((confirm.flags and grants.inv()) or Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    fun finished(context: Context) {
+        pendingConfirmation = null
+        NotificationManagerCompat.from(context).cancel(CONFIRM_ID)
+        File(context.cacheDir, "updates").deleteRecursively()
+    }
 
     fun currentVersion(): String = BuildConfig.VERSION_NAME.substringBefore('-')
 
@@ -77,9 +133,35 @@ object Updater {
         }
         val release = Release(version, apkName,
             apkUrl?.takeIf { it.startsWith("https://github.com/") } ?: return@withContext null,
-            sumsUrl?.takeIf { it.startsWith("https://github.com/") } ?: return@withContext null)
+            sumsUrl?.takeIf { it.startsWith("https://github.com/") } ?: return@withContext null,
+            changelog(version) ?: clean(json.optString("body")))
         available = release
         release
+    }
+
+    fun versionCode(version: String): Int {
+        val parts = version.split('.').map { it.toIntOrNull() ?: 0 }
+        return parts.getOrElse(0) { 0 } * 10000 + parts.getOrElse(1) { 0 } * 100 + parts.getOrElse(2) { 0 }
+    }
+
+    fun clean(markdown: String): String = markdown.lineSequence()
+        .map { it.replace("**", "").replace("`", "").trimEnd() }
+        .map { if (it.trimStart().startsWith("- ")) "• " + it.trimStart().removePrefix("- ") else it }
+        .joinToString("\n").replace(Regex("\n{3,}"), "\n\n").trim()
+
+    private fun changelog(version: String): String? {
+        val locales = if (java.util.Locale.getDefault().language == "de") listOf("de-DE", "en-US") else listOf("en-US")
+        for (locale in locales) {
+            val url = "https://raw.githubusercontent.com/DNSBunker/DNSBunker-Android-App/v$version/fastlane/metadata/android/$locale/changelogs/${versionCode(version)}.txt"
+            val text = runCatching {
+                http.newCall(get(url, "text/plain")).execute().use { response ->
+                    if (!response.isSuccessful) null
+                    else response.body?.byteStream()?.let { DnsWire.readBounded(it, 16384).toString(Charsets.UTF_8) }
+                }
+            }.getOrNull()
+            if (!text.isNullOrBlank()) return clean(text)
+        }
+        return null
     }
 
     suspend fun download(context: Context, release: Release): File = withContext(Dispatchers.IO) {

@@ -26,17 +26,15 @@ import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import org.dnsbunker.android.core.AppState
+import org.dnsbunker.android.core.BlockedLog
 import org.dnsbunker.android.core.DnsSettings
 import org.dnsbunker.android.core.ProtectionStatus
 import org.dnsbunker.android.core.UserSettings
 import org.dnsbunker.android.core.WifiPolicy
 import org.dnsbunker.android.core.UpdateState
 import org.dnsbunker.android.core.Updater
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.dnsbunker.android.ui.DnsBunkerScreen
 import org.dnsbunker.android.ui.DnsBunkerTheme
 import org.dnsbunker.android.ui.ScreenActions
@@ -71,7 +69,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         settings = UserSettings(this)
+        BlockedLog.enabled = settings.current().rememberBlocked
         contentResolver.registerContentObserver(Settings.Global.getUriFor("private_dns_mode"), false, dnsObserver)
+        contentResolver.registerContentObserver(Settings.Global.getUriFor("private_dns_specifier"), false, dnsObserver)
         val actions = ScreenActions(
             toggleProtection = ::toggleProtection,
             setPadding = { enabled -> change { it.copy(ednsPaddingEnabled = enabled) } },
@@ -96,8 +96,14 @@ class MainActivity : ComponentActivity() {
             setAutoUpdate = { enabled -> change { it.copy(updateCheck = enabled) }; if (enabled) checkUpdates(force = true) },
             checkUpdates = { checkUpdates(force = true) },
             installUpdate = ::installUpdate,
+            openDateSettings = { launch(Intent(Settings.ACTION_DATE_SETTINGS), Intent(Settings.ACTION_SETTINGS)) },
             openVpnSettings = { launch(Intent(Settings.ACTION_VPN_SETTINGS), Intent(Settings.ACTION_WIRELESS_SETTINGS)) },
             runDiagnostics = { sendVpn(DnsVpnService.ACTION_DIAGNOSTICS) },
+            pause = { minutes -> sendVpn(DnsVpnService.ACTION_PAUSE, minutes) },
+            resume = { sendVpn(DnsVpnService.ACTION_RESUME) },
+            setExcludedApps = { apps -> change { it.copy(excludedApps = apps) } },
+            setRememberBlocked = { enabled -> BlockedLog.enabled = enabled; change { it.copy(rememberBlocked = enabled) } },
+            setCaptiveAuto = { enabled -> change { it.copy(captiveAuto = enabled) } },
         )
         setContent {
             val status by AppState.snapshot.collectAsState()
@@ -113,10 +119,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        Updater.foreground = true
         refreshAndroidState()
+        Updater.resumeConfirmation(this)?.let { confirm ->
+            try { startActivity(confirm) } catch (_: Exception) { AppState.update { it.copy(updateState = UpdateState.FAILED) } }
+        }
         checkUpdates(force = intent?.getBooleanExtra(DnsVpnService.EXTRA_CHECK_UPDATE, false) == true)
         intent?.removeExtra(DnsVpnService.EXTRA_CHECK_UPDATE)
-        if (AppState.snapshot.value.wifiLocationReady) refreshVpnIfRunning()
+        if (AppState.snapshot.value.wifiLocationReady || AppState.snapshot.value.status == ProtectionStatus.PAUSED) refreshVpnIfRunning()
+    }
+
+    override fun onPause() {
+        Updater.foreground = false
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -127,24 +142,26 @@ class MainActivity : ComponentActivity() {
     private fun refreshAndroidState() {
         val power = getSystemService(POWER_SERVICE) as PowerManager
         val mode = Settings.Global.getString(contentResolver, "private_dns_mode")
+        val host = if (mode == "hostname") runCatching { Settings.Global.getString(contentResolver, "private_dns_specifier") }.getOrNull()?.trim()?.lowercase() else null
         val location = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
             LocationManagerCompat.isLocationEnabled(getSystemService(LOCATION_SERVICE) as LocationManager)
         val background = Build.VERSION.SDK_INT < 29 ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
         AppState.update { it.copy(batteryExempt = Build.VERSION.SDK_INT < 23 || power.isIgnoringBatteryOptimizations(packageName),
-            privateDnsStrict = mode == "hostname", wifiLocationReady = location, backgroundLocation = background) }
+            privateDnsStrict = mode == "hostname", privateDnsHost = host, wifiLocationReady = location, backgroundLocation = background) }
     }
 
     private fun checkUpdates(force: Boolean) {
         val busy = AppState.snapshot.value.updateState.let { it == UpdateState.CHECKING || it == UpdateState.DOWNLOADING || it == UpdateState.INSTALLING }
         if (busy) return
         if (!force && (!settings.current().updateCheck || System.currentTimeMillis() - settings.lastUpdateCheck() < 6 * 3_600_000L)) return
-        lifecycleScope.launch {
-            AppState.update { it.copy(updateState = UpdateState.CHECKING) }
+        AppState.update { it.copy(updateState = UpdateState.CHECKING) }
+        Updater.scope.launch {
             try {
                 val release = Updater.check()
                 settings.setLastUpdateCheck(System.currentTimeMillis())
-                AppState.update { it.copy(updateState = if (release != null) UpdateState.AVAILABLE else UpdateState.LATEST, updateVersion = release?.version) }
+                AppState.update { it.copy(updateState = if (release != null) UpdateState.AVAILABLE else UpdateState.LATEST,
+                    updateVersion = release?.version, updateNotes = release?.notes) }
             } catch (c: CancellationException) { throw c } catch (_: Exception) {
                 AppState.update { it.copy(updateState = UpdateState.FAILED) }
             }
@@ -158,12 +175,13 @@ class MainActivity : ComponentActivity() {
             launch(Updater.installPermissionIntent(this), Intent(Settings.ACTION_SECURITY_SETTINGS))
             return
         }
-        lifecycleScope.launch {
-            AppState.update { it.copy(updateState = UpdateState.DOWNLOADING) }
+        val context = applicationContext
+        AppState.update { it.copy(updateState = UpdateState.DOWNLOADING) }
+        Updater.scope.launch {
             try {
-                val apk = Updater.download(this@MainActivity, release)
+                val apk = Updater.download(context, release)
                 AppState.update { it.copy(updateState = UpdateState.INSTALLING) }
-                withContext(Dispatchers.IO) { Updater.install(this@MainActivity, apk) }
+                Updater.install(context, apk)
             } catch (c: CancellationException) { throw c } catch (_: Exception) {
                 AppState.update { it.copy(updateState = UpdateState.FAILED) }
             }
@@ -204,8 +222,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun sendVpn(action: String) {
-        val intent = Intent(this, DnsVpnService::class.java).setAction(action)
+    private fun sendVpn(action: String, minutes: Int = 0) {
+        val intent = Intent(this, DnsVpnService::class.java).setAction(action).putExtra(DnsVpnService.EXTRA_MINUTES, minutes)
         if (action == DnsVpnService.ACTION_STOP) startService(intent)
         else ContextCompat.startForegroundService(this, intent)
     }

@@ -1,12 +1,9 @@
 package org.dnsbunker.android.core
 
-import android.annotation.SuppressLint
 import android.os.Build
 import java.io.ByteArrayInputStream
 import java.security.KeyStore
-import java.security.cert.CertificateException
 import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.TrustManagerFactory
@@ -58,34 +55,41 @@ zj0EAwMDaAAwZQIwe3lORlCEwkSHRhtFcP9Ymd70/aTSVaYgLXTWNLxBo1BfASdW
 tL4ndQavEi51mI38AjEAi/V3bNTIZargCyzuFJ0nN6T5U6VR5CmD1/iQMVtCnwr1
 /q4AaOeMSQ+2b1tbFfLn
 -----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIB2TCCAWCgAwIBAgIRAKQCa6LvbHwg1AR+XmWmk4AwCgYIKoZIzj0EAwMwLjEL
+MAkGA1UEBhMCVVMxDTALBgNVBAoTBElTUkcxEDAOBgNVBAMTB1Jvb3QgWUUwHhcN
+MjUwOTAzMDAwMDAwWhcNNDUwOTAyMjM1OTU5WjAuMQswCQYDVQQGEwJVUzENMAsG
+A1UEChMESVNSRzEQMA4GA1UEAxMHUm9vdCBZRTB2MBAGByqGSM49AgEGBSuBBAAi
+A2IABDwS/6vhrcVqcbBo+wgdI3fwn9x7DNJJOY/lTOti0vkwuRN87RhEhTH17E7X
+yFjWsPYhIPt/wzOqxTd2b+4ZJNy9ID04YywF9U5zasDVyGSNErVNtz8uSGh5izW8
+7j77GaNCMEAwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0O
+BBYEFKPIJlqOoUzQNWP8myPIOq5W809WMAoGCCqGSM49BAMDA2cAMGQCMHhMr8N9
+LdL1VQKs9BdV81r76eXRB6mtjuNjzk6/lBsPNToWLTDzGYgtQKO1jl63uAIwGV7m
+onyF377c+MM1oqVNs17sgu7F9YKZwgLmVbeOMDbKAXHtKMDLbiGllCcs8f47
+-----END CERTIFICATE-----
 """
 
     val needsBundledRoots: Boolean get() = Build.VERSION.SDK_INT < 25
 
-    private fun manager(store: KeyStore?): X509TrustManager =
-        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(store) }
-            .trustManagers.filterIsInstance<X509TrustManager>().first()
-
-    private val bundled: X509TrustManager by lazy {
-        val store = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
+    private val store: KeyStore by lazy {
+        val trusted = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
+        val system = KeyStore.getInstance("AndroidCAStore").apply { load(null) }
+        for (alias in system.aliases()) {
+            if (alias.startsWith("system:")) system.getCertificate(alias)?.let { trusted.setCertificateEntry(alias, it) }
+        }
         CertificateFactory.getInstance("X.509").generateCertificates(ByteArrayInputStream(BUNDLED_ROOTS.toByteArray()))
-            .forEachIndexed { index, certificate -> store.setCertificateEntry("bundled-$index", certificate) }
-        manager(store)
+            .forEachIndexed { index, certificate -> trusted.setCertificateEntry("bundled:$index", certificate) }
+        trusted
     }
 
     val trustManager: X509TrustManager by lazy {
-        val system = manager(null)
-        @SuppressLint("CustomX509TrustManager")
-        object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = system.checkClientTrusted(chain, authType)
-            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
-                try { system.checkServerTrusted(chain, authType) } catch (error: CertificateException) {
-                    try { bundled.checkServerTrusted(chain, authType) } catch (_: CertificateException) { throw error }
-                }
-            }
-            override fun getAcceptedIssuers(): Array<X509Certificate> = system.acceptedIssuers + bundled.acceptedIssuers
-        }
+        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(store) }
+            .trustManagers.filterIsInstance<X509TrustManager>().first()
     }
+
+    fun verifyPeer(host: String, session: javax.net.ssl.SSLSession): Boolean =
+        okhttp3.internal.tls.OkHostnameVerifier.verify(host, session) &&
+            (host == DnsEndpoint.HOST || okhttp3.internal.tls.OkHostnameVerifier.verify(DnsEndpoint.HOST, session))
 
     val socketFactory: SSLSocketFactory by lazy {
         if (!needsBundledRoots) SSLSocketFactory.getDefault() as SSLSocketFactory

@@ -66,7 +66,7 @@ class QuicBackend(private val service: VpnService, private val network: Network)
     suspend fun exchange(kind:Int,ipIdentity:Boolean,query:ByteArray,timeout:Int=1800):DnsExchange = withContext(Dispatchers.IO) {
         var last: IOException? = null
         val preference="$kind/$ipIdentity"
-        val addresses=listOf("185.250.250.61", "2a0a:51c1:a:ea::").sortedBy {if(it==preferred[preference])0 else 1}
+        val addresses=DnsEndpoint.addresses.mapNotNull { it.hostAddress }.sortedBy {if(it==preferred[preference])0 else 1}
         for (ip in addresses) {
             try {
                 val data = NativeQuic.nativeQueryTimed(session(ip, ipIdentity).handle, kind, query, timeout)

@@ -18,7 +18,7 @@ static jbyteArray query_result(JNIEnv *e,jlong handle,jint kind,jbyteArray query
  int size=dnsbunker_query(handle,kind,q,n,out,timeout);(*e)->ReleaseByteArrayElements(e,query,q,JNI_ABORT);
  jbyteArray result=NULL;
  if(size>=29&&size<=65552){int offset=timed?0:17;size-=offset;result=(*e)->NewByteArray(e,size);if(result)(*e)->SetByteArrayRegion(e,result,0,size,(jbyte*)(out+offset));}
- else {const char *message=size==-3?"QUIC certificate verification failed":size==-2?"QUIC timeout":"QUIC connection or response failed";
+ else {const char *message=size==-5?"QUIC certificate time invalid":size==-3?"QUIC certificate verification failed":size==-2?"QUIC timeout":"QUIC connection or response failed";
  jclass error=(*e)->FindClass(e,"java/io/IOException");if(error)(*e)->ThrowNew(e,error,message);}
  free(out);return result;
 }

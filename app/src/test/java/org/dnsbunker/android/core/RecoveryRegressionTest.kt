@@ -112,4 +112,19 @@ class RecoveryRegressionTest {
         assertFalse(Updater.newer("0.2.3", "0.2.3"))
         assertFalse(Updater.newer("0.2.2", "0.2.10"))
     }
+
+    @Test fun `release notes become readable plain text and version codes follow the release scheme`() {
+        assertEquals("• Faster\n• Safer", Updater.clean("- **Faster**\n- `Safer`"))
+        assertEquals(300, Updater.versionCode("0.3.0"))
+        assertEquals(10203, Updater.versionCode("1.2.3"))
+    }
+
+    @Test fun `certificate time errors are recognised across transports`() {
+        assertTrue(ClockCheck.isTimeError(java.io.IOException("QUIC certificate time invalid")))
+        assertTrue(ClockCheck.isTimeError(javax.net.ssl.SSLHandshakeException("x").apply {
+            initCause(java.security.cert.CertificateExpiredException("Certificate expired at 2026"))
+        }))
+        assertFalse(ClockCheck.isTimeError(java.io.IOException("QUIC certificate verification failed")))
+        assertFalse(ClockCheck.isTimeError(java.io.IOException("timeout")))
+    }
 }

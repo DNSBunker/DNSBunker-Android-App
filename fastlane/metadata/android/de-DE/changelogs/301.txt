@@ -1,0 +1,9 @@
+- Pause für 5, 15 oder 60 Minuten aus App oder Benachrichtigung
+- Einzelne Apps ausnehmen
+- WLAN-Anmeldeseiten werden erkannt und durchgelassen
+- Optionale Liste zuletzt blockierter Domains mit Fehlalarm-Meldung
+- Hinweise, ob Server oder Netz das Problem ist
+- Anleitung für Privates DNS ohne App-VPN
+- Serveradressen kommen per verschlüsseltem DNS
+- Zeigt vor Updates, was neu ist; warnt bei falscher Uhrzeit
+- Korrekturen für Updates im Hintergrund und Android 5

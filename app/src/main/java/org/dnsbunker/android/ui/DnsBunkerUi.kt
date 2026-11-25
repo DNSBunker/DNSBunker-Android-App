@@ -30,6 +30,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -73,6 +75,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -136,11 +139,17 @@ data class ScreenActions(
     val openPrivateDnsSettings: () -> Unit,
     val openCaptivePortal: () -> Unit,
     val openVpnSettings: () -> Unit,
+    val openDateSettings: () -> Unit,
     val allowBackgroundLocation: () -> Unit,
     val setAutoUpdate: (Boolean) -> Unit,
     val checkUpdates: () -> Unit,
     val installUpdate: () -> Unit,
     val runDiagnostics: () -> Unit,
+    val pause: (Int) -> Unit,
+    val resume: () -> Unit,
+    val setExcludedApps: (Set<String>) -> Unit,
+    val setRememberBlocked: (Boolean) -> Unit,
+    val setCaptiveAuto: (Boolean) -> Unit,
 )
 
 private fun RuntimeSnapshot.isOff() = status == ProtectionStatus.OFF || status == ProtectionStatus.ERROR
@@ -183,7 +192,7 @@ fun DnsBunkerScreen(status: RuntimeSnapshot, preferences: DnsSettings, actions: 
                 0 -> ProtectionPage(status, actions, onConnect = {
                     if (status.isOff()) showVpnDisclosure = true else actions.toggleProtection()
                 })
-                1 -> StatisticsPage(status, actions.runDiagnostics)
+                1 -> StatisticsPage(status, preferences, actions)
                 else -> SettingsPage(status, preferences, actions)
             }
         }
@@ -215,7 +224,7 @@ private fun PageTitle(title: String, subtitle: String? = null) {
 }
 
 @Composable
-private fun BunkerCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun BunkerCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -241,10 +250,19 @@ private fun RowDivider() = HorizontalDivider(color = MaterialTheme.colorScheme.o
 
 @Composable
 private fun ProtectionPage(status: RuntimeSnapshot, actions: ScreenActions, onConnect: () -> Unit) {
-    StatusHero(status, onConnect)
+    var showPause by remember { mutableStateOf(false) }
+    StatusHero(status, onConnect, onPause = { showPause = true }, onResume = actions.resume, onPortal = actions.openCaptivePortal)
+    if (showPause) PauseDialog(onPick = { showPause = false; actions.pause(it) }, onDismiss = { showPause = false })
+    ServerStatusCard(status)
+    if (status.clockWrong) BunkerCard {
+        Text(stringResource(R.string.clock_title), fontWeight = FontWeight.Bold, color = warning())
+        Text(stringResource(R.string.clock_body), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedButton(onClick = actions.openDateSettings) { Text(stringResource(R.string.clock_action)) }
+    }
     UpdateCard(status, actions.installUpdate)
-    if (status.privateDnsStrict) PrivateDnsWarning(actions.openPrivateDnsSettings)
-    if (status.captivePortal) BunkerCard {
+    if (status.usesOurPrivateDns()) PrivateDnsOursCard(running = !status.isOff())
+    else if (status.privateDnsStrict) PrivateDnsWarning(actions.openPrivateDnsSettings)
+    if (status.captivePortal && status.status != ProtectionStatus.PORTAL) BunkerCard {
         Text(stringResource(R.string.captive_title), fontWeight = FontWeight.Bold)
         Text(stringResource(R.string.captive_body), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = actions.openCaptivePortal) { Text(stringResource(R.string.open_captive)) }
@@ -268,7 +286,7 @@ private fun ProtectionPage(status: RuntimeSnapshot, actions: ScreenActions, onCo
 }
 
 @Composable
-private fun StatusHero(status: RuntimeSnapshot, onConnect: () -> Unit) {
+private fun StatusHero(status: RuntimeSnapshot, onConnect: () -> Unit, onPause: () -> Unit, onResume: () -> Unit, onPortal: () -> Unit) {
     val active = status.status == ProtectionStatus.ACTIVE
     val target = when {
         active -> Green
@@ -281,6 +299,8 @@ private fun StatusHero(status: RuntimeSnapshot, onConnect: () -> Unit) {
         ProtectionStatus.OFF -> R.string.status_off
         ProtectionStatus.STARTING -> R.string.status_starting
         ProtectionStatus.WIFI_EXEMPT -> R.string.status_exempt
+        ProtectionStatus.PAUSED -> R.string.status_paused
+        ProtectionStatus.PORTAL -> R.string.status_portal
         ProtectionStatus.DEGRADED -> R.string.status_degraded
         ProtectionStatus.ERROR -> R.string.status_error
     })
@@ -306,6 +326,20 @@ private fun StatusHero(status: RuntimeSnapshot, onConnect: () -> Unit) {
                 Icon(Icons.Default.PowerSettingsNew, null, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.start), fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
+        } else if (status.status == ProtectionStatus.PORTAL) {
+            Button(onClick = onPortal, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                Icon(Icons.Default.Wifi, null, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.open_captive), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+            TextButton(onClick = onConnect, modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.textButtonColors(contentColor = Color.White)) { Text(stringResource(R.string.stop)) }
+        } else if (status.status == ProtectionStatus.PAUSED) {
+            Button(onClick = onResume, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.resume), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+            TextButton(onClick = onConnect, modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.textButtonColors(contentColor = Color.White)) { Text(stringResource(R.string.stop)) }
         } else {
             OutlinedButton(
                 onClick = onConnect,
@@ -315,6 +349,13 @@ private fun StatusHero(status: RuntimeSnapshot, onConnect: () -> Unit) {
             ) {
                 Icon(Icons.Default.PowerSettingsNew, null, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.stop), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+            if (!status.lockdown && status.status != ProtectionStatus.WIFI_EXEMPT) {
+                TextButton(onClick = onPause, modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White)) {
+                    Icon(Icons.Default.Pause, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.pause_action))
+                }
             }
         }
     }
@@ -365,18 +406,20 @@ private fun InfoLine(name: String, value: String) {
 }
 
 @Composable
-private fun warning() = if (isSystemInDarkTheme()) Amber else AmberDark
+internal fun warning() = if (isSystemInDarkTheme()) Amber else AmberDark
 
 @Composable
-private fun Hint(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) =
+internal fun Hint(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) =
     Text(text, fontSize = 12.sp, lineHeight = 16.sp, color = color)
 
 @Composable
-private fun StatisticsPage(status: RuntimeSnapshot, diagnostics: () -> Unit) {
+private fun StatisticsPage(status: RuntimeSnapshot, settings: DnsSettings, actions: ScreenActions) {
+    val diagnostics = actions.runDiagnostics
     var reset by remember { mutableStateOf(false) }
     val number = NumberFormat.getIntegerInstance()
     PageTitle(stringResource(R.string.statistics_title), stringResource(R.string.session_only))
     Impact(status)
+    BlockedDomainsCard(settings.rememberBlocked, actions.setRememberBlocked)
     ActivityChart(status)
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Metric(stringResource(R.string.failure_count), number.format(status.failures), Modifier.weight(1f))
@@ -475,6 +518,8 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
     var confirmRouter by remember { mutableStateOf(false) }
     var confirmBattery by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
+    var showApps by remember { mutableStateOf(false) }
+    var showPrivateDns by remember { mutableStateOf(false) }
 
     PageTitle(stringResource(R.string.nav_settings))
 
@@ -484,6 +529,10 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
         }
         RowDivider()
         SwitchRow(stringResource(R.string.watchdog), stringResource(R.string.watchdog_body), settings.watchdogEnabled, actions.setWatchdog)
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            RowDivider()
+            SwitchRow(stringResource(R.string.captive_auto_title), stringResource(R.string.captive_auto_body), settings.captiveAuto, actions.setCaptiveAuto)
+        }
         RowDivider()
         LinkRow(stringResource(R.string.always_on_title), stringResource(R.string.always_on_body), onClick = actions.openVpnSettings)
         if (android.os.Build.VERSION.SDK_INT >= 23) {
@@ -515,6 +564,13 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
         Spacer(Modifier.height(8.dp))
     }
 
+    SectionCard(stringResource(R.string.section_apps)) {
+        val count = settings.excludedApps.size
+        LinkRow(stringResource(R.string.apps_title),
+            if (count == 0) stringResource(R.string.apps_none) else pluralStringResource(R.plurals.apps_excluded, count, count)) { showApps = true }
+        if (status.lockdown && count > 0) { Hint(stringResource(R.string.apps_lockdown), warning()); Spacer(Modifier.height(8.dp)) }
+    }
+
     SectionCard(stringResource(R.string.section_local)) {
         TextRow(stringResource(R.string.local_devices), stringResource(R.string.local_devices_body))
         RowDivider()
@@ -541,9 +597,10 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
         SwitchRow(stringResource(R.string.dot_fallback), stringResource(R.string.dot_fallback_body), settings.fallbackDoT, actions.setDotFallback)
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             RowDivider()
+            val ours = status.usesOurPrivateDns()
             LinkRow(stringResource(R.string.private_dns_setting),
-            stringResource(if (status.privateDnsStrict) R.string.private_dns_title else R.string.private_dns_ok),
-            highlight = status.privateDnsStrict, onClick = actions.openPrivateDnsSettings)
+                stringResource(when { ours -> R.string.private_dns_ours_title; status.privateDnsStrict -> R.string.private_dns_title; else -> R.string.private_dns_ok }),
+                highlight = status.privateDnsStrict && !ours) { showPrivateDns = true }
         }
     }
 
@@ -601,6 +658,9 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
         dismissButton = { TextButton(onClick = { confirmBattery = false }) { Text(stringResource(R.string.cancel)) } },
     )
     if (showLicenses) LicensesDialog { showLicenses = false }
+    if (showApps) AppPickerDialog(settings.excludedApps, status.lockdown,
+        onDone = { actions.setExcludedApps(it); showApps = false }, onDismiss = { showApps = false })
+    if (showPrivateDns) PrivateDnsHelperDialog(actions.openPrivateDnsSettings) { showPrivateDns = false }
 }
 
 @Composable
@@ -619,16 +679,28 @@ private fun updateText(status: RuntimeSnapshot): String? = when (status.updateSt
 private fun UpdateCard(status: RuntimeSnapshot, install: () -> Unit) {
     val version = status.updateVersion ?: return
     if (status.updateState == UpdateState.LATEST || status.updateState == UpdateState.IDLE) return
+    var showNotes by remember { mutableStateOf(false) }
     BunkerCard {
         Text(stringResource(R.string.update_available, version), fontWeight = FontWeight.Bold)
         val busy = status.updateState == UpdateState.DOWNLOADING || status.updateState == UpdateState.INSTALLING
         updateText(status)?.takeIf { status.updateState != UpdateState.AVAILABLE }?.let { Hint(it) }
-        Button(onClick = install, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.update_install)) }
+        Button(onClick = { showNotes = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.update_install)) }
     }
+    if (showNotes) AlertDialog(
+        onDismissRequest = { showNotes = false },
+        title = { Text(stringResource(R.string.update_whats_new, version)) },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text(status.updateNotes?.takeIf { it.isNotBlank() } ?: stringResource(R.string.update_no_notes), fontSize = 14.sp, lineHeight = 20.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = { showNotes = false; install() }) { Text(stringResource(R.string.update_confirm_install)) } },
+        dismissButton = { TextButton(onClick = { showNotes = false }) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 @Composable
-private fun SwitchRow(title: String, description: String, value: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(title: String, description: String, value: Boolean, onChange: (Boolean) -> Unit) {
     Row(
         Modifier.fillMaxWidth().toggleable(value = value, role = Role.Switch, onValueChange = onChange).padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -699,7 +771,7 @@ private fun PrivateDnsWarning(open: () -> Unit) {
 }
 
 @Composable
-private fun rememberLinkOpener(): (String) -> Unit {
+internal fun rememberLinkOpener(): (String) -> Unit {
     val uri = LocalUriHandler.current
     val context = LocalContext.current
     val missing = stringResource(R.string.browser_missing)

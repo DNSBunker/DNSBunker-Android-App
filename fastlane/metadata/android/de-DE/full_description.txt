@@ -11,7 +11,10 @@
 <p><b>Für den Alltag gemacht</b></p>
 <ul>
 <li>Ein Schalter zum Einschalten, klarer Status und Live-Statistik: beantwortete und blockierte Anfragen, Filterkategorien (PRO und TIF) und Antwortzeiten.</li>
-<li>WLAN-Ausnahmen für Netze, in denen du das lokale DNS nutzen möchtest.</li>
+<li>WLAN-Ausnahmen für Netze, in denen du das lokale DNS nutzen möchtest, und App-Ausnahmen für Apps, die mit gefiltertem DNS Probleme haben.</li>
+<li>Pause für 5, 15 oder 60 Minuten aus der App oder der Benachrichtigung. WLAN-Anmeldeseiten in Hotels, Zügen oder Cafés werden erkannt und automatisch durchgelassen.</li>
+<li>Optionale Liste zuletzt blockierter Domains mit Link zum Melden von Fehlalarmen.</li>
+<li>Klare Hinweise, ob der DNSBunker-Server oder das Netz das Problem ist, und eine Anleitung, DNSBunker über Androids „Privates DNS“ ohne App-VPN zu nutzen.</li>
 <li>Lokale Namen wie nas.home.arpa gehen nie an den öffentlichen Resolver; Router-DNS lässt sich für vertrauenswürdige WLANs erlauben.</li>
 <li>Automatische Wiederherstellung nach Netzwechseln, Neustart nach Updates und Handy-Neustarts, Schnelleinstellungs-Kachel, dunkles Design und fünf Sprachen (Deutsch, Englisch, Französisch, Spanisch, Russisch).</li>
 <li>Eingebaute Updates aus den offiziellen GitHub-Releases, geprüft über Prüfsumme und Signatur.</li>
@@ -21,7 +24,7 @@
 <p><b>Datenschutz</b></p>
 <ul>
 <li>Keine Werbung, keine Tracker, keine Telemetrie, kein Konto.</li>
-<li>Statistiken bleiben nur im Arbeitsspeicher deines Geräts. Es wird kein Domain-Verlauf gespeichert.</li>
+<li>Statistiken und die optionale Liste blockierter Domains bleiben nur im Arbeitsspeicher deines Geräts. Es wird kein Domain-Verlauf gespeichert.</li>
 <li>Android-Backups sind für die App deaktiviert.</li>
 </ul>
 
@@ -34,6 +37,7 @@
 <li>Beim Start ausführen: schaltet den Schutz nach einem Neustart wieder ein, wenn er vorher an war.</li>
 <li>Apps installieren: nur für geprüfte Updates von DNSBunker selbst.</li>
 <li>Standort immer: optional, nur damit WLAN-Ausnahmen direkt nach einem Neustart greifen.</li>
+<li>Sichtbare Apps: Die Auswahl für App-Ausnahmen zeigt nur Apps mit Startsymbol; die Liste verlässt nie dein Gerät.</li>
 </ul>
 
 <p>Apps mit eigenem verschlüsseltem DNS (zum Beispiel manche Browser) werden von keinem System-DNS-Schutz erfasst. Datenschutzerklärung: https://dnsbunker.org/privacy.html</p>

@@ -11,6 +11,7 @@ import android.service.quicksettings.TileService
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import org.dnsbunker.android.MainActivity
+import org.dnsbunker.android.R
 import org.dnsbunker.android.core.AppState
 import org.dnsbunker.android.core.ProtectionStatus
 
@@ -26,16 +27,22 @@ object TileRefresher {
 class QuickTile : TileService() {
     private fun running() = AppState.snapshot.value.status.let { it != ProtectionStatus.OFF && it != ProtectionStatus.ERROR }
 
-    override fun onStartListening() = show(running())
+    private fun paused() = AppState.snapshot.value.status == ProtectionStatus.PAUSED
 
-    private fun show(active: Boolean) {
+    override fun onStartListening() = show(running() && !paused(), paused())
+
+    private fun show(active: Boolean, paused: Boolean = false) {
         val tile = qsTile ?: return
         tile.state = if (active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+        if (Build.VERSION.SDK_INT >= 29) tile.subtitle = if (paused) getString(R.string.tile_paused) else null
         tile.updateTile()
     }
 
     override fun onClick() {
-        if (running()) {
+        if (paused()) {
+            ContextCompat.startForegroundService(this, Intent(this, DnsVpnService::class.java).setAction(DnsVpnService.ACTION_RESUME))
+            show(true)
+        } else if (running()) {
             startService(Intent(this, DnsVpnService::class.java).setAction(DnsVpnService.ACTION_STOP))
             show(false)
         } else if (VpnService.prepare(this) == null) {
