@@ -1,0 +1,87 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '15 13 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The workflow files themselves.
+          - language: actions
+            build-mode: none
+          # JNI bridge in native/quic.
+          - language: c-cpp
+            build-mode: none
+          # QUIC and network stack library; built for Android so the android-tagged files are analysed too.
+          - language: go
+            build-mode: manual
+          # The app is Kotlin, which CodeQL only sees when it is compiled; networkprobe is Java.
+          - language: java-kotlin
+            build-mode: manual
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.4'
+          cache-dependency-path: native/quic/go.sum
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      # Compiling the sources is enough for CodeQL; the native library and APK packaging are not needed here.
+      - name: Compile Kotlin and Java
+        if: matrix.language == 'java-kotlin'
+        run: ./gradlew --no-daemon --no-build-cache --stacktrace :app:compileDebugKotlin :networkprobe:compileDebugJavaWithJavac
+
+      # Any NDK on the runner will do for analysis; release builds still pin r30 in native/build-native.sh.
+      - name: Build Go library
+        if: matrix.language == 'go'
+        working-directory: native/quic
+        run: |
+          ndk="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:?No Android NDK found on the runner}}"
+          export GOOS=android GOARCH=amd64 CGO_ENABLED=1 GOFLAGS=-mod=readonly
+          export CC="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android21-clang"
+          go build -buildvcs=false ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
