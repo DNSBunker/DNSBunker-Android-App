@@ -28,6 +28,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.GppGood
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -80,6 +84,40 @@ internal fun copyText(context: Context, text: String, confirmation: String) {
 }
 
 internal fun RuntimeSnapshot.usesOurPrivateDns() = privateDnsStrict && privateDnsHost?.trimEnd('.') == DnsEndpoint.HOST
+
+@Composable
+internal fun ExplainerCard() {
+    BunkerCard {
+        Text(stringResource(R.string.about_title), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        BenefitRow(Icons.Default.Block, R.string.about_ads_title, R.string.about_ads_body)
+        BenefitRow(Icons.Default.GppGood, R.string.about_threats_title, R.string.about_threats_body)
+        BenefitRow(Icons.Default.Lock, R.string.about_privacy_title, R.string.about_privacy_body)
+        Hint(stringResource(R.string.about_how))
+    }
+}
+
+@Composable
+private fun BenefitRow(icon: ImageVector, title: Int, body: Int) {
+    Row(verticalAlignment = Alignment.Top) {
+        Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(10.dp)),
+            contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(stringResource(title), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(stringResource(body), fontSize = 13.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+internal fun aboutText(): String = listOf(
+    stringResource(R.string.about_ads_title) + ": " + stringResource(R.string.about_ads_body),
+    stringResource(R.string.about_threats_title) + ": " + stringResource(R.string.about_threats_body),
+    stringResource(R.string.about_privacy_title) + ": " + stringResource(R.string.about_privacy_body),
+    stringResource(R.string.about_how),
+).joinToString("\n\n")
 
 @Composable
 internal fun PauseDialog(onPick: (Int) -> Unit, onDismiss: () -> Unit) {
@@ -208,8 +246,8 @@ internal fun BlockedDomainsCard(enabled: Boolean, setEnabled: (Boolean) -> Unit)
 
 @Composable
 private fun categoryLabel(category: DnsWire.BlockCategory): String = when (category) {
-    DnsWire.BlockCategory.PRO -> "PRO"
-    DnsWire.BlockCategory.TIF -> "TIF"
+    DnsWire.BlockCategory.PRO -> "HaGeZi Pro"
+    DnsWire.BlockCategory.TIF -> "HaGeZi TIF"
     else -> stringResource(R.string.category_short_other)
 }
 

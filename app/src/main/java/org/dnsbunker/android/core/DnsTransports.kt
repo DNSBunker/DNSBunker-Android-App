@@ -274,6 +274,7 @@ class DnsOverTls(private val sockets: ProtectedSockets, private val ipIdentity: 
 data class ProtocolHealth(val name: String, val ready: Boolean, val latencyMillis: Long? = null,val setupMillis:Long?=null)
 class DnsClient(private val service: VpnService, private val network: Network?, private val settings: DnsSettings,
     private val allowLocalDns: Boolean = false, transportOverride: List<DnsTransport>? = null,
+    private val networkSuffixes: List<String> = emptyList(),
     private val budgetMillis: Long = 6_000, private val attemptMillis: Long = 3_500) : Closeable {
     val networkHandle:Long?=network?.let(Compat::id)
     private val sockets = ProtectedSockets(service,network)
@@ -322,7 +323,7 @@ class DnsClient(private val service: VpnService, private val network: Network?, 
         if (closed) throw IOException("DNS client closed")
         require(DnsWire.validQuery(originalMessage)) { "Invalid DNS query" }
         val start = System.nanoTime()
-        if (DnsPrivacyPolicy.isLocal(DnsWire.firstQuestionName(originalMessage),settings.splitDnsSuffixes)) {
+        if (DnsPrivacyPolicy.isLocal(DnsWire.firstQuestionName(originalMessage),(listOf(settings.splitDnsSuffixes) + networkSuffixes).joinToString(","))) {
             if (!settings.splitDnsEnabled || !allowLocalDns || network == null) throw IOException("Local DNS not permitted")
             val answer = LocalSplitDns(service,network).resolve(originalMessage)
             if(recordMetrics) AppState.recordQuery((System.nanoTime()-start)/1_000_000,false)

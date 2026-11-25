@@ -47,6 +47,7 @@ data class RuntimeSnapshot(
     val privateDnsHost: String? = null,
     val serverStatus: ServerStatus = ServerStatus.UNKNOWN,
     val serverMessage: String? = null,
+    val networkDomains: List<String> = emptyList(),
 )
 object AppState {
     val snapshot = MutableStateFlow(RuntimeSnapshot())

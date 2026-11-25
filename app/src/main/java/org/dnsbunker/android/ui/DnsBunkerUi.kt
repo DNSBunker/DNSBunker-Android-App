@@ -253,6 +253,7 @@ private fun ProtectionPage(status: RuntimeSnapshot, actions: ScreenActions, onCo
     var showPause by remember { mutableStateOf(false) }
     StatusHero(status, onConnect, onPause = { showPause = true }, onResume = actions.resume, onPortal = actions.openCaptivePortal)
     if (showPause) PauseDialog(onPick = { showPause = false; actions.pause(it) }, onDismiss = { showPause = false })
+    if (status.status == ProtectionStatus.OFF && !status.usesOurPrivateDns()) ExplainerCard()
     ServerStatusCard(status)
     if (status.clockWrong) BunkerCard {
         Text(stringResource(R.string.clock_title), fontWeight = FontWeight.Bold, color = warning())
@@ -406,6 +407,15 @@ private fun InfoLine(name: String, value: String) {
 }
 
 @Composable
+private fun CategoryLine(name: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text(name, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), fontSize = 13.sp)
+        Spacer(Modifier.width(12.dp))
+        Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
 internal fun warning() = if (isSystemInDarkTheme()) Amber else AmberDark
 
 @Composable
@@ -477,9 +487,9 @@ private fun Impact(status: RuntimeSnapshot) {
             }
         }
         if (status.blocked > 0) {
-            InfoLine(stringResource(R.string.category_pro), number.format(status.blockedPro))
-            InfoLine(stringResource(R.string.category_tif), number.format(status.blockedTif))
-            if (status.blockedOther > 0) InfoLine(stringResource(R.string.category_other), number.format(status.blockedOther))
+            CategoryLine(stringResource(R.string.category_pro), number.format(status.blockedPro))
+            CategoryLine(stringResource(R.string.category_tif), number.format(status.blockedTif))
+            if (status.blockedOther > 0) CategoryLine(stringResource(R.string.category_other), number.format(status.blockedOther))
         }
         Hint(stringResource(if (status.blocked == 0L) R.string.impact_empty else R.string.impact_explainer))
     }
@@ -576,6 +586,10 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
         RowDivider()
         SwitchRow(stringResource(R.string.split_dns), stringResource(R.string.split_dns_body), settings.splitDnsEnabled, actions.setSplitDns)
         Hint(stringResource(R.string.local_suffixes, settings.splitDnsSuffixes))
+        if (status.networkDomains.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Hint(stringResource(R.string.network_domains, status.networkDomains.joinToString(", ")), MaterialTheme.colorScheme.primary)
+        }
         Spacer(Modifier.height(6.dp))
         RowDivider()
         SwitchRow(stringResource(R.string.allow_router_dns), stringResource(R.string.router_dns_body), settings.allowLocalPlaintext) {
@@ -605,6 +619,8 @@ private fun SettingsPage(status: RuntimeSnapshot, settings: DnsSettings, actions
     }
 
     SectionCard(stringResource(R.string.section_about)) {
+        ExpandableRow(stringResource(R.string.about_title), aboutText())
+        RowDivider()
         ExpandableRow(stringResource(R.string.protection_scope), stringResource(R.string.scope_notice))
         RowDivider()
         ExpandableRow(stringResource(R.string.encrypted_only_title), stringResource(R.string.encrypted_only_body))

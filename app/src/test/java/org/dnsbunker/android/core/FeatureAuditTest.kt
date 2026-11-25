@@ -68,4 +68,15 @@ class FeatureAuditTest {
         assertNull(ServerCheck.message("not json", "de"))
         assertEquals(500, ServerCheck.message("""{"message":{"en":"${"x".repeat(900)}"}}""", "en")?.length)
     }
+
+    @Test fun `router search domains become local only when safe`() {
+        assertEquals(listOf("fritz.box", "localdomain"), DnsPrivacyPolicy.networkSuffixes("fritz.box localdomain", trusted = false))
+        assertTrue(DnsPrivacyPolicy.networkSuffixes("com", trusted = true).isEmpty())
+        assertTrue(DnsPrivacyPolicy.networkSuffixes("example.com", trusted = false).isEmpty())
+        assertEquals(listOf("home.example.com"), DnsPrivacyPolicy.networkSuffixes("Home.Example.com.", trusted = true))
+        assertTrue(DnsPrivacyPolicy.networkSuffixes("bad_domain.lan a..lan", trusted = true).isEmpty())
+        assertTrue(DnsPrivacyPolicy.isLocal("nas.fritz.box"))
+        assertTrue(DnsPrivacyPolicy.isLocal("printer.home.example.com", "home.arpa,home.example.com"))
+        assertFalse(DnsPrivacyPolicy.isLocal("www.example.com", "home.arpa,home.example.com"))
+    }
 }

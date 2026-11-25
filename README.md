@@ -1,6 +1,8 @@
 # DNSBunker for Android
 
-Encrypted DNS for Android (5.0 and newer) with the filtering resolver of [dnsbunker.org](https://dnsbunker.org). A local VPN receives Android's system DNS queries and forwards them only over encrypted, certificate-verified connections. All other traffic keeps going directly to its destination.
+Blocks ads, trackers, phishing and malware in all apps on your Android device (5.0 and newer), using the filtering resolver of [dnsbunker.org](https://dnsbunker.org) with the HaGeZi Pro list and the HaGeZi Threat Intelligence Feed. Your address lookups are encrypted, so your mobile operator or Wi-Fi no longer sees which addresses you look up.
+
+Technically, a local VPN receives Android's system DNS queries and forwards them only over encrypted, certificate-verified connections. All other traffic keeps going directly to its destination.
 
 <p>
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1_protection.png" width="200" alt="Protection">
@@ -13,8 +15,8 @@ Encrypted DNS for Android (5.0 and newer) with the filtering resolver of [dnsbun
 - DNS over HTTPS (HTTP/2 and HTTP/3), DNS over QUIC and DNS over TLS, each with hostname SNI or certificate-verified IP identity
 - No plaintext fallback: without a working encrypted upstream, queries fail with SERVFAIL
 - Optional comprehensive mode: an on-device gVisor network stack also redirects apps that send DNS to public servers on port 53; there is no remote VPN exit and no TLS interception
-- Live statistics kept only in memory: answered and blocked queries, PRO/TIF filter categories, response times
-- Wi-Fi exceptions, app exceptions, local name protection (`home.arpa`, `.local`, private reverse zones) and optional router DNS for trusted Wi-Fi networks
+- Live statistics kept only in memory: answered and blocked queries, HaGeZi Pro / TIF categories, response times
+- Wi-Fi exceptions, app exceptions, local name protection (`home.arpa`, `.local`, `fritz.box`, private reverse zones and the router's DHCP search domain) and optional router DNS for trusted Wi-Fi networks
 - Pause for 5, 15 or 60 minutes from the app or the notification; automatic handling of Wi-Fi sign-in pages (only when encrypted DNS fails on that network, protection returns as soon as the network is unlocked)
 - Optional list of recently blocked domains (memory only) with a link to report false positives on Listseek
 - Status hints that tell apart no internet, an unreachable DNSBunker server and a disrupted DNS service; guide for using DNSBunker through Android's Private DNS without the app VPN

@@ -1,0 +1,4 @@
+- Die App erklärt jetzt, was DNSBunker für dich tut: weniger Werbung und Tracking, Schutz vor Betrug und Schadsoftware, mehr Privatsphäre
+- Die Sperrlisten werden benannt: HaGeZi Pro und HaGeZi Threat Intelligence Feed
+- Freundlichere, persönlichere Texte
+- Die Domain, die dein Router verteilt (z. B. fritz.box), gilt als lokal und geht nie an DNSBunker

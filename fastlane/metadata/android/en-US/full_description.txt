@@ -10,7 +10,7 @@
 
 <p><b>Made for everyday use</b></p>
 <ul>
-<li>One switch to turn protection on, with a clear status and live statistics: answered and blocked queries, filter categories (PRO and TIF) and response times.</li>
+<li>One switch to turn protection on, with a clear status and live statistics: answered and blocked queries, HaGeZi filter categories (Pro and TIF) and response times.</li>
 <li>Wi-Fi exceptions for networks where you want to use the local DNS, and app exceptions for apps that have problems with filtered DNS.</li>
 <li>Pause for 5, 15 or 60 minutes from the app or the notification. Wi-Fi sign-in pages in hotels, trains or cafés are detected and allowed automatically.</li>
 <li>Optional list of recently blocked domains with a link to report false positives.</li>

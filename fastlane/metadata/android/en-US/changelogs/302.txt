@@ -1,0 +1,4 @@
+- The app now explains what DNSBunker does for you: fewer ads and trackers, protection from scams and malware, more privacy
+- Block lists are named: HaGeZi Pro and HaGeZi Threat Intelligence Feed
+- Friendlier, more personal texts
+- The domain your router announces (for example fritz.box) is treated as local and never sent to DNSBunker

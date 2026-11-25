@@ -64,6 +64,7 @@ import org.dnsbunker.android.core.RoutePlan
 import org.dnsbunker.android.core.BlockedLog
 import org.dnsbunker.android.core.DnsEndpoint
 import org.dnsbunker.android.core.DnsSettings
+import org.dnsbunker.android.core.DnsPrivacyPolicy
 import org.dnsbunker.android.core.ServerCheck
 import org.dnsbunker.android.core.ServerStatus
 
@@ -119,6 +120,8 @@ class DnsVpnService : VpnService() {
     private var resolverProfile: org.dnsbunker.android.core.DnsSettings? = null
     private var resolverNetwork: Network? = null
     private var resolverLocal = false
+    private var resolverSuffixes: List<String> = emptyList()
+    private val knownDomains = ConcurrentHashMap<Network, String>()
     private var vpnNetwork: Network? = null
     private var networkChangedJob: Job? = null
     private val resolverRef=AtomicReference<DnsClient?>(null)
@@ -134,7 +137,13 @@ class DnsVpnService : VpnService() {
     private val knownSsid = ConcurrentHashMap<Network, String>()
     @Volatile private var locationForeground = false
 
+    private fun domainsChanged(network: Network, properties: android.net.LinkProperties) {
+        val domains = properties.domains.orEmpty()
+        if (knownDomains.put(network, domains) != domains && network == activeNetwork) scheduleNetworkChange()
+    }
+
     private fun underlayLost(network: Network) {
+        knownDomains.remove(network)
         capabilities.remove(network)
         knownSsid.remove(network)
         invalidateResolver(network)
@@ -152,12 +161,14 @@ class DnsVpnService : VpnService() {
                 override fun onAvailable(network: Network) = scheduleNetworkChange()
                 override fun onLost(network: Network) = underlayLost(network)
                 override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = underlayChanged(network, caps)
+                override fun onLinkPropertiesChanged(network: Network, properties: android.net.LinkProperties) = domainsChanged(network, properties)
             }
         } else {
             object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) = scheduleNetworkChange()
                 override fun onLost(network: Network) = underlayLost(network)
                 override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = underlayChanged(network, caps)
+                override fun onLinkPropertiesChanged(network: Network, properties: android.net.LinkProperties) = domainsChanged(network, properties)
             }
         }
     private var networkCallback: ConnectivityManager.NetworkCallback = newNetworkCallback()
@@ -511,11 +522,14 @@ class DnsVpnService : VpnService() {
             }
         }
         val local=WifiPolicy.allowLocal(currentSsid,profile.trustedLocalDnsSsids,profile.allowLocalPlaintext)
-        val changed=renewResolver || resolver==null || resolverNetwork!=underlay || resolverProfile?.resolverKey()!=profile.resolverKey() || resolverLocal!=local
+        val domains=underlay?.let { knownDomains[it] ?: networkManager.getLinkProperties(it)?.domains }
+        val suffixes=DnsPrivacyPolicy.networkSuffixes(domains, local)
+        if (AppState.snapshot.value.networkDomains != suffixes) AppState.update { it.copy(networkDomains = suffixes) }
+        val changed=renewResolver || resolver==null || resolverNetwork!=underlay || resolverProfile?.resolverKey()!=profile.resolverKey() || resolverLocal!=local || resolverSuffixes!=suffixes
         if(changed) {
             healthJob?.cancel()
-            resolver=underlay?.let { DnsClient(this,it,profile,allowLocalDns=local) }
-            resolverNetwork=underlay;resolverProfile=profile;resolverLocal=local
+            resolver=underlay?.let { DnsClient(this,it,profile,allowLocalDns=local,networkSuffixes=suffixes) }
+            resolverNetwork=underlay;resolverProfile=profile;resolverLocal=local;resolverSuffixes=suffixes
             AppState.update { it.copy(protocolHealth=emptyList()) }
             resolver?.startBackgroundProbes()
         }

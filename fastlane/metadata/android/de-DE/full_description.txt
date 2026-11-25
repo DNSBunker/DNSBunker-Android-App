@@ -10,7 +10,7 @@
 
 <p><b>Für den Alltag gemacht</b></p>
 <ul>
-<li>Ein Schalter zum Einschalten, klarer Status und Live-Statistik: beantwortete und blockierte Anfragen, Filterkategorien (PRO und TIF) und Antwortzeiten.</li>
+<li>Ein Schalter zum Einschalten, klarer Status und Live-Statistik: beantwortete und blockierte Anfragen, HaGeZi-Filterkategorien (Pro und TIF) und Antwortzeiten.</li>
 <li>WLAN-Ausnahmen für Netze, in denen du das lokale DNS nutzen möchtest, und App-Ausnahmen für Apps, die mit gefiltertem DNS Probleme haben.</li>
 <li>Pause für 5, 15 oder 60 Minuten aus der App oder der Benachrichtigung. WLAN-Anmeldeseiten in Hotels, Zügen oder Cafés werden erkannt und automatisch durchgelassen.</li>
 <li>Optionale Liste zuletzt blockierter Domains mit Link zum Melden von Fehlalarmen.</li>
