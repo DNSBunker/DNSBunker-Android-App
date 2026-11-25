@@ -16,7 +16,7 @@ Technically, a local VPN receives Android's system DNS queries and forwards them
 - No plaintext fallback: without a working encrypted upstream, queries fail with SERVFAIL
 - Optional comprehensive mode: an on-device gVisor network stack also redirects apps that send DNS to public servers on port 53; there is no remote VPN exit and no TLS interception
 - Live statistics kept only in memory: answered and blocked queries, HaGeZi Pro / TIF categories, response times
-- Wi-Fi exceptions, app exceptions, local name protection (`home.arpa`, `.local`, `fritz.box`, private reverse zones and the router's DHCP search domain) and optional router DNS for trusted Wi-Fi networks
+- Wi-Fi exceptions, app exceptions, local name protection (`home.arpa`, `.local`, `fritz.box`, private reverse zones and, on trusted Wi-Fi, the router's DHCP search domain if it is a private name) and optional router DNS for trusted Wi-Fi networks
 - Pause for 5, 15 or 60 minutes from the app or the notification; automatic handling of Wi-Fi sign-in pages (only when encrypted DNS fails on that network, protection returns as soon as the network is unlocked)
 - Optional list of recently blocked domains (memory only) with a link to report false positives on Listseek
 - Status hints that tell apart no internet, an unreachable DNSBunker server and a disrupted DNS service; guide for using DNSBunker through Android's Private DNS without the app VPN

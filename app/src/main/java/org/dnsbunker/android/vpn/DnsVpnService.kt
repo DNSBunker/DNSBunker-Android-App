@@ -308,7 +308,7 @@ class DnsVpnService : VpnService() {
                 healthJob?.cancel()
                 resolver = null
                 closeTunnel()
-                AppState.update { it.copy(status = ProtectionStatus.OFF, transport = "—", currentWifi = null, detail = getString(R.string.off_detail)) }
+                AppState.update { it.copy(status = ProtectionStatus.OFF, transport = "—", currentWifi = null, networkDomains = emptyList(), detail = getString(R.string.off_detail)) }
                 ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
@@ -437,7 +437,7 @@ class DnsVpnService : VpnService() {
             closeTunnel()
             resolver = null
             val time = android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(pausedUntil))
-            AppState.update { it.copy(status = ProtectionStatus.PAUSED, transport = "—", pausedUntil = pausedUntil,
+            AppState.update { it.copy(status = ProtectionStatus.PAUSED, transport = "—", pausedUntil = pausedUntil, networkDomains = emptyList(),
                 serverStatus = ServerStatus.UNKNOWN, serverMessage = null, detail = getString(R.string.paused_detail, time)) }
             refreshNotification(getString(R.string.paused_notification, time))
             pauseJob?.cancel()
@@ -457,7 +457,7 @@ class DnsVpnService : VpnService() {
         if (underlay != null && portalNetwork == underlay) {
             closeTunnel()
             resolver = null
-            AppState.update { it.copy(status = ProtectionStatus.PORTAL, transport = "—", serverStatus = ServerStatus.UNKNOWN,
+            AppState.update { it.copy(status = ProtectionStatus.PORTAL, transport = "—", serverStatus = ServerStatus.UNKNOWN, networkDomains = emptyList(),
                 serverMessage = null, detail = getString(R.string.portal_detail)) }
             refreshNotification(getString(R.string.portal_notification))
             watchPortal(underlay, profile)
@@ -467,7 +467,7 @@ class DnsVpnService : VpnService() {
         if (exempt) {
             closeTunnel()
             resolver = null
-            AppState.update { it.copy(status = ProtectionStatus.WIFI_EXEMPT, transport = "—", detail = getString(R.string.wifi_exempt_detail, currentSsid)) }
+            AppState.update { it.copy(status = ProtectionStatus.WIFI_EXEMPT, transport = "—", networkDomains = emptyList(), detail = getString(R.string.wifi_exempt_detail, currentSsid)) }
             refreshNotification(getString(R.string.status_exempt))
             return@withLock
         }
@@ -522,8 +522,10 @@ class DnsVpnService : VpnService() {
             }
         }
         val local=WifiPolicy.allowLocal(currentSsid,profile.trustedLocalDnsSsids,profile.allowLocalPlaintext)
-        val domains=underlay?.let { knownDomains[it] ?: networkManager.getLinkProperties(it)?.domains }
-        val suffixes=DnsPrivacyPolicy.networkSuffixes(domains, local)
+        // Router search domains only matter when names under them may actually go to the router.
+        val suffixes=if(profile.splitDnsEnabled && local)
+            DnsPrivacyPolicy.networkSuffixes(underlay?.let { knownDomains[it] ?: networkManager.getLinkProperties(it)?.domains })
+        else emptyList()
         if (AppState.snapshot.value.networkDomains != suffixes) AppState.update { it.copy(networkDomains = suffixes) }
         val changed=renewResolver || resolver==null || resolverNetwork!=underlay || resolverProfile?.resolverKey()!=profile.resolverKey() || resolverLocal!=local || resolverSuffixes!=suffixes
         if(changed) {
@@ -804,7 +806,7 @@ class DnsVpnService : VpnService() {
         resolver=null
         healthJob?.cancel();watchdogJob?.cancel()
         closeTunnel()
-        AppState.update {it.copy(status=ProtectionStatus.OFF,transport="—",currentWifi=null,androidValidated=false,detail=getString(R.string.off_detail))}
+        AppState.update {it.copy(status=ProtectionStatus.OFF,transport="—",currentWifi=null,androidValidated=false,networkDomains=emptyList(),detail=getString(R.string.off_detail))}
         warnRevoked()
         super.onRevoke()
         stopSelf()
@@ -818,7 +820,7 @@ class DnsVpnService : VpnService() {
         try { networkManager.unregisterNetworkCallback(networkCallback) } catch (_: Exception) { }
         closeTunnel()
         scope.cancel()
-        AppState.update { it.copy(status = ProtectionStatus.OFF, transport = "—", currentWifi = null, detail = getString(R.string.off_detail)) }
+        AppState.update { it.copy(status = ProtectionStatus.OFF, transport = "—", currentWifi = null, networkDomains = emptyList(), detail = getString(R.string.off_detail)) }
         super.onDestroy()
     }
 }

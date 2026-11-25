@@ -3,22 +3,30 @@ package org.dnsbunker.android.core
 object DnsPrivacyPolicy {
     private val suffixes = setOf("localhost", "local", "lan", "home", "internal", "home.arpa", "onion", "invalid", "test",
         "localdomain", "fritz.box", "speedport.ip")
-    private val privateZones = setOf("local", "lan", "home", "internal", "home.arpa", "localdomain", "fritz.box", "speedport.ip",
-        "corp", "intranet", "private")
+    // Zones a router may announce as its search domain. Anything outside them is a public name and is never sent to the router
+    // just because the network says so, since an SSID alone does not prove which network this is.
+    private val privateZones = suffixes - setOf("localhost", "onion", "invalid", "test") + setOf("corp", "intranet", "private")
 
-    fun networkSuffixes(raw: String?, trusted: Boolean): List<String> =
-        raw.orEmpty().split(',', ' ', ';', '\t', '\n').map { it.trim().trim('.').lowercase(java.util.Locale.ROOT) }
+    private fun normalize(name: String) = name.trim().trim('.').lowercase(java.util.Locale.ROOT)
+
+    fun networkSuffixes(raw: String?): List<String> =
+        raw.orEmpty().split(',', ' ', ';', '\t', '\n').map(::normalize)
             .filter { name ->
                 name.isNotEmpty() && name.length <= 253 && name.all { it in 'a'..'z' || it in '0'..'9' || it == '-' || it == '.' } &&
                     name.split('.').all { it.isNotEmpty() && it.length <= 63 }
             }
-            .filter { name -> privateZones.any { name == it || name.endsWith(".$it") } || (trusted && name.contains('.')) }
+            .filter { name -> privateZones.any { name == it || name.endsWith(".$it") } }
             .distinct().take(4)
-    fun isLocal(name: String, configuredSuffixes: String = ""): Boolean {
+
+    /** Built-in local zones plus the user's comma-separated suffixes and any extra (already normalised) ones. */
+    fun localSuffixes(configured: String, extra: List<String> = emptyList()): Set<String> =
+        suffixes + configured.split(',').map(::normalize).filter { it.isNotEmpty() } + extra
+
+    fun isLocal(name: String, configuredSuffixes: String = ""): Boolean = isLocal(name, localSuffixes(configuredSuffixes))
+    fun isLocal(name: String, zones: Set<String>): Boolean {
         val qname = name.trimEnd('.').lowercase(java.util.Locale.ROOT)
         if (!qname.contains('.')) return true
-        val configured = configuredSuffixes.split(',').map { it.trim().trim('.').lowercase(java.util.Locale.ROOT) }.filter { it.isNotEmpty() }
-        if ((suffixes + configured).any { qname == it || qname.endsWith(".$it") }) return true
+        if (zones.any { qname == it || qname.endsWith(".$it") }) return true
         if (qname.endsWith(".in-addr.arpa")) {
             val octets = qname.removeSuffix(".in-addr.arpa").split('.').reversed().map { it.toIntOrNull() }
             val a = octets.getOrNull(0); val b = octets.getOrNull(1)

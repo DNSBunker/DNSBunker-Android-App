@@ -70,11 +70,17 @@ class FeatureAuditTest {
     }
 
     @Test fun `router search domains become local only when safe`() {
-        assertEquals(listOf("fritz.box", "localdomain"), DnsPrivacyPolicy.networkSuffixes("fritz.box localdomain", trusted = false))
-        assertTrue(DnsPrivacyPolicy.networkSuffixes("com", trusted = true).isEmpty())
-        assertTrue(DnsPrivacyPolicy.networkSuffixes("example.com", trusted = false).isEmpty())
-        assertEquals(listOf("home.example.com"), DnsPrivacyPolicy.networkSuffixes("Home.Example.com.", trusted = true))
-        assertTrue(DnsPrivacyPolicy.networkSuffixes("bad_domain.lan a..lan", trusted = true).isEmpty())
+        assertEquals(listOf("fritz.box", "localdomain"), DnsPrivacyPolicy.networkSuffixes("fritz.box localdomain"))
+        assertEquals(listOf("acme.corp"), DnsPrivacyPolicy.networkSuffixes("Acme.CORP."))
+        assertTrue(DnsPrivacyPolicy.networkSuffixes("com").isEmpty())
+        assertTrue(DnsPrivacyPolicy.networkSuffixes("bad_domain.lan a..lan").isEmpty())
+        // A copied SSID must not be able to pull public names onto plaintext router DNS.
+        assertTrue(DnsPrivacyPolicy.networkSuffixes("google.com bank.example Home.Example.com.").isEmpty())
+        val zones = DnsPrivacyPolicy.localSuffixes("home.arpa, Corp.Example.", listOf("acme.corp"))
+        assertTrue(DnsPrivacyPolicy.isLocal("nas.acme.corp", zones))
+        assertTrue(DnsPrivacyPolicy.isLocal("db.corp.example", zones))
+        assertTrue(DnsPrivacyPolicy.isLocal("router.fritz.box", zones))
+        assertFalse(DnsPrivacyPolicy.isLocal("www.google.com", zones))
         assertTrue(DnsPrivacyPolicy.isLocal("nas.fritz.box"))
         assertTrue(DnsPrivacyPolicy.isLocal("printer.home.example.com", "home.arpa,home.example.com"))
         assertFalse(DnsPrivacyPolicy.isLocal("www.example.com", "home.arpa,home.example.com"))
